@@ -88,7 +88,6 @@ class EasyQueue<T> {
   Future<void> processQueue() async {
     if (_isProcessing) return;
     _isProcessing = true;
-    _currentBatchId = const Uuid().v4();
     if (_queuedImages.isEmpty) return;
     _notifyListeners(QueueCallback.onStart);
     try {
