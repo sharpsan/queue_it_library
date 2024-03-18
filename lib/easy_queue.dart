@@ -12,8 +12,8 @@ typedef OnProcessItemCallback<T> = FutureOr<void> Function(
   QueueItem<T> item,
 );
 
-class ImageUploadQueue<T> {
-  ImageUploadQueue({
+class EasyQueue<T> {
+  EasyQueue({
     this.retryCount = 3,
   }) {
     _currentBatchId = const Uuid().v4();
