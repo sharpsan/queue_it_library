@@ -48,7 +48,7 @@ class EasyQueue<T> {
   /// Returns a double between 0 and 1 representing the progress of the queue.
   double get progress {
     if (all.isEmpty || pending.isEmpty) return 1;
-    final percentage = pending.length / all.length;
+    final percentage = 1 - (pending.length / all.length);
     // round to 2 decimal places;
     return double.parse(percentage.toStringAsFixed(2));
   }
