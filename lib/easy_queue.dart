@@ -8,7 +8,7 @@ typedef OnUpdateCallback<T> = FutureOr<void> Function(
   QueueItemStatus status,
   QueueItem<T> item,
 );
-typedef OnProcessItemCallback<T> = FutureOr<void> Function(
+typedef ItemHandler<T> = FutureOr<void> Function(
   QueueItem<T> item,
 );
 
@@ -22,14 +22,8 @@ class EasyQueue<T> {
   }
   final int retryCount;
 
-  /// Called when an item status is updated.
-  OnUpdateCallback<T>? onUpdate;
-
-  /// Called when the queue is done processing.
-  FutureOr<void> Function()? onDone;
-
   /// Called when an item is being processed.
-  OnProcessItemCallback<T>? onProcessItem;
+  ItemHandler<T>? itemHandler;
 
   /// state
   final List<QueueItem<T>> _queuedImages = [];
@@ -61,40 +55,34 @@ class EasyQueue<T> {
 
   /// listener callbacks
 
-  final _onUpdateListenerCallbacks = <String, OnUpdateCallback<T>>{};
+  final _statusChangeCallbacks = <QueueCallback, Map<String, dynamic>>{
+    QueueCallback.onStart: {},
+    QueueCallback.onItemUpdated: {},
+    QueueCallback.onDone: {},
+  };
+
+  String addOnStartListener(FutureOr<void> Function() callback) {
+    return _addListener(QueueCallback.onStart, callback);
+  }
+
+  void removeOnStartListener(String key) {
+    _removeListener(QueueCallback.onStart, key);
+  }
 
   String addOnUpdateListener(OnUpdateCallback<T> callback) {
-    final key = const Uuid().v4();
-    _onUpdateListenerCallbacks[key] = callback;
-    return key;
+    return _addListener(QueueCallback.onItemUpdated, callback);
   }
 
   void removeOnUpdateListener(String key) {
-    _onUpdateListenerCallbacks.remove(key);
+    _removeListener(QueueCallback.onItemUpdated, key);
   }
-
-  void _notifyOnUpdateListeners(QueueItemStatus status, QueueItem<T> item) {
-    for (final callback in _onUpdateListenerCallbacks.values) {
-      callback(status, item);
-    }
-  }
-
-  final _onDoneListenerCallbacks = <String, FutureOr<void> Function()>{};
 
   String addOnDoneListener(OnDoneCallback callback) {
-    final key = const Uuid().v4();
-    _onDoneListenerCallbacks[key] = callback;
-    return key;
+    return _addListener(QueueCallback.onDone, callback);
   }
 
   void removeOnDoneListener(String key) {
-    _onDoneListenerCallbacks.remove(key);
-  }
-
-  void _notifyOnDoneListeners() {
-    for (final callback in _onDoneListenerCallbacks.values) {
-      callback();
-    }
+    _removeListener(QueueCallback.onDone, key);
   }
 
   Future<void> processQueue() async {
@@ -102,15 +90,14 @@ class EasyQueue<T> {
     _isProcessing = true;
     _currentBatchId = const Uuid().v4();
     if (_queuedImages.isEmpty) return;
+    _notifyListeners(QueueCallback.onStart);
     try {
-      await _processQueueItems(onUpdate);
+      await _processQueueItems();
     } finally {
       _isProcessing = false;
       _currentBatchId = const Uuid().v4();
     }
-
-    onDone?.call();
-    _notifyOnDoneListeners();
+    _notifyListeners(QueueCallback.onDone);
   }
 
   void cancelAll() {
@@ -138,21 +125,20 @@ class EasyQueue<T> {
   }
 
   void dispose() {
-    _onUpdateListenerCallbacks.clear();
+    _statusChangeCallbacks.forEach((key, value) {
+      value.clear();
+    });
   }
 
   //////// INTERNALS ////////
 
-  Future<void> _processQueueItems(OnUpdateCallback<T>? onUpdate) async {
+  Future<void> _processQueueItems() async {
     for (final item in _queuedImages) {
-      await _processQueueItem(item, onUpdate);
+      await _processQueueItem(item);
     }
   }
 
-  Future<void> _processQueueItem(
-    QueueItem<T> item,
-    OnUpdateCallback<T>? onUpdate,
-  ) async {
+  Future<void> _processQueueItem(QueueItem<T> item) async {
     /// handle the item based on it's status
     switch (item.status) {
       case QueueItemStatus.processing:
@@ -160,49 +146,56 @@ class EasyQueue<T> {
       case QueueItemStatus.canceled:
         break;
       case QueueItemStatus.pending:
-        await _handleQueuedItem(item, onUpdate);
+        await _handleQueuedItem(item);
       case QueueItemStatus.failed:
-        _handleFailedItem(item, onUpdate);
+        _handleFailedItem(item);
     }
   }
 
-  Future<void> _handleQueuedItem(
-    QueueItem<T> item,
-    OnUpdateCallback<T>? onUpdate,
-  ) async {
+  Future<void> _handleQueuedItem(QueueItem<T> item) async {
     item
       ..status = QueueItemStatus.processing
       ..startedProcessingAt = DateTime.now();
-    onUpdate?.call(item.status, item);
-    _notifyOnUpdateListeners(item.status, item);
+    _notifyListeners(
+      QueueCallback.onItemUpdated,
+      positionalArguments: [item.status, item],
+    );
     try {
-      await onProcessItem?.call(item);
+      await itemHandler?.call(item);
       item
         ..status = QueueItemStatus.completed
         ..completedAt = DateTime.now();
-      onUpdate?.call(item.status, item);
+      _notifyListeners(
+        QueueCallback.onItemUpdated,
+        positionalArguments: [item.status, item],
+      );
     } catch (e) {
       item
         ..status = QueueItemStatus.failed
         ..failedAt = DateTime.now();
-      await onUpdate?.call(item.status, item);
-      _notifyOnUpdateListeners(item.status, item);
+      _notifyListeners(
+        QueueCallback.onItemUpdated,
+        positionalArguments: [item.status, item],
+      );
     }
   }
 
-  void _handleFailedItem(
-    QueueItem<T> item,
-    OnUpdateCallback<T>? onUpdate,
-  ) {
+  void _handleFailedItem(QueueItem<T> item) {
     if (item.retryCount < retryCount) {
       item.status = QueueItemStatus.pending;
       item.retryCount++;
-      onUpdate?.call(item.status, item);
+      _notifyListeners(
+        QueueCallback.onItemUpdated,
+        positionalArguments: [item.status, item],
+      );
     } else {
       item
         ..status = QueueItemStatus.canceled
         ..canceledAt = DateTime.now();
-      onUpdate?.call(item.status, item);
+      _notifyListeners(
+        QueueCallback.onItemUpdated,
+        positionalArguments: [item.status, item],
+      );
     }
   }
 
@@ -213,6 +206,26 @@ class EasyQueue<T> {
     return _queuedImages
         .where((item) => status == null || item.status == status)
         .where((item) => batchId == null || item.batchId == batchId);
+  }
+
+  String _addListener(QueueCallback callbackType, dynamic callback) {
+    final key = const Uuid().v4();
+    _statusChangeCallbacks[callbackType]![key] = callback;
+    return key;
+  }
+
+  void _removeListener(QueueCallback callbackType, String key) {
+    _statusChangeCallbacks[callbackType]!.remove(key);
+  }
+
+  void _notifyListeners(
+    QueueCallback callbackType, {
+    List<dynamic>? positionalArguments = const [],
+    Map<Symbol, dynamic>? namedArguments = const {},
+  }) {
+    for (final callback in _statusChangeCallbacks[callbackType]!.values) {
+      Function.apply(callback, positionalArguments, namedArguments);
+    }
   }
 }
 
@@ -247,4 +260,10 @@ class QueueItem<T> {
   DateTime? canceledAt;
   QueueItemStatus status;
   int retryCount;
+}
+
+enum QueueCallback {
+  onStart,
+  onItemUpdated,
+  onDone,
 }
