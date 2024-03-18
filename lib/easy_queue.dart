@@ -12,6 +12,8 @@ typedef OnProcessItemCallback<T> = FutureOr<void> Function(
   QueueItem<T> item,
 );
 
+typedef OnDoneCallback = FutureOr<void> Function();
+
 class EasyQueue<T> {
   EasyQueue({
     this.retryCount = 3,
@@ -57,6 +59,44 @@ class EasyQueue<T> {
     return double.parse(percentage.toStringAsFixed(2));
   }
 
+  /// listener callbacks
+
+  final _onUpdateListenerCallbacks = <String, OnUpdateCallback<T>>{};
+
+  String addOnUpdateListener(OnUpdateCallback<T> callback) {
+    final key = const Uuid().v4();
+    _onUpdateListenerCallbacks[key] = callback;
+    return key;
+  }
+
+  void removeOnUpdateListener(String key) {
+    _onUpdateListenerCallbacks.remove(key);
+  }
+
+  void _notifyOnUpdateListeners(QueueItemStatus status, QueueItem<T> item) {
+    for (final callback in _onUpdateListenerCallbacks.values) {
+      callback(status, item);
+    }
+  }
+
+  final _onDoneListenerCallbacks = <String, FutureOr<void> Function()>{};
+
+  String addOnDoneListener(OnDoneCallback callback) {
+    final key = const Uuid().v4();
+    _onDoneListenerCallbacks[key] = callback;
+    return key;
+  }
+
+  void removeOnDoneListener(String key) {
+    _onDoneListenerCallbacks.remove(key);
+  }
+
+  void _notifyOnDoneListeners() {
+    for (final callback in _onDoneListenerCallbacks.values) {
+      callback();
+    }
+  }
+
   Future<void> processQueue() async {
     if (_isProcessing) return;
     _isProcessing = true;
@@ -70,6 +110,7 @@ class EasyQueue<T> {
     }
 
     onDone?.call();
+    _notifyOnDoneListeners();
   }
 
   void cancelAll() {
@@ -94,6 +135,10 @@ class EasyQueue<T> {
     _queuedImages[_queuedImages.indexOf(item)]
       ..status = QueueItemStatus.canceled
       ..canceledAt = DateTime.now();
+  }
+
+  void dispose() {
+    _onUpdateListenerCallbacks.clear();
   }
 
   //////// INTERNALS ////////
@@ -129,6 +174,7 @@ class EasyQueue<T> {
       ..status = QueueItemStatus.processing
       ..startedProcessingAt = DateTime.now();
     onUpdate?.call(item.status, item);
+    _notifyOnUpdateListeners(item.status, item);
     try {
       await onProcessItem?.call(item);
       item
@@ -140,6 +186,7 @@ class EasyQueue<T> {
         ..status = QueueItemStatus.failed
         ..failedAt = DateTime.now();
       await onUpdate?.call(item.status, item);
+      _notifyOnUpdateListeners(item.status, item);
     }
   }
 
