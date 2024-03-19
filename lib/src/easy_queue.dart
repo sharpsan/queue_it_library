@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easy_queue/easy_queue.dart';
 import 'package:easy_queue/src/callbacks/on_start_callback.dart';
 import 'package:easy_queue/src/models/queue_callback.dart';
 import 'package:easy_queue/src/models/queue_item.dart';
@@ -65,8 +66,9 @@ class EasyQueue<T> {
 
   Future<void> processQueue() async {
     if (_isProcessing) return;
-    _isProcessing = true;
     if (_items.isEmpty) return;
+    if (_items.pending.isEmpty) return;
+    _isProcessing = true;
     _notifyListeners(
       QueueCallback.onStart,
       positionalArguments: [_currentBatchId],
