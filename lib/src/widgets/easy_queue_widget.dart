@@ -8,7 +8,7 @@ class EasyQueueWidget<T> extends StatefulWidget {
     required this.builder,
   });
   final EasyQueue<T> queue;
-  final Widget Function(bool processing) builder;
+  final Widget Function(BuildContext context, bool processing) builder;
 
   @override
   State<EasyQueueWidget<T>> createState() => _EasyQueueWidgetState<T>();
@@ -20,7 +20,7 @@ class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
     return ValueListenableBuilder(
       valueListenable: widget.queue.isProcessingNotifier,
       builder: (context, isProcessing, child) {
-        return widget.builder(isProcessing);
+        return widget.builder(context, isProcessing);
       },
     );
   }
