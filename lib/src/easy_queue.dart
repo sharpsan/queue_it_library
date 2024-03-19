@@ -1,13 +1,14 @@
 import 'dart:async';
 
-import 'package:easy_queue/easy_queue.dart';
 import 'package:easy_queue/src/callbacks/on_start_callback.dart';
+import 'package:easy_queue/src/extensions/queue_items_extension.dart';
 import 'package:easy_queue/src/models/queue_callback.dart';
 import 'package:easy_queue/src/models/queue_item.dart';
 import 'package:easy_queue/src/models/queue_item_status.dart';
 import 'package:easy_queue/src/callbacks/item_handler.dart';
 import 'package:easy_queue/src/callbacks/on_done_callback.dart';
 import 'package:easy_queue/src/callbacks/on_update_callback.dart';
+import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
 class EasyQueue<T> {
@@ -24,10 +25,11 @@ class EasyQueue<T> {
   /// state
   final List<QueueItem<T>> _items = [];
   List<QueueItem<T>> get queuedImages => _items;
-  bool _isProcessing = false;
+  final _isProcessingNotifier = ValueNotifier(false);
   late String _currentBatchId;
 
-  bool get isProcessing => _isProcessing;
+  ValueNotifier<bool> get isProcessingNotifier => _isProcessingNotifier;
+  bool get isProcessing => _isProcessingNotifier.value;
   Iterable<QueueItem<T>> get currentBatchItems => items(_currentBatchId);
   Iterable<QueueItem<T>> items([String? batchId]) =>
       _items.where((e) => batchId == null || e.batchId == batchId);
@@ -65,10 +67,10 @@ class EasyQueue<T> {
   }
 
   Future<void> processQueue() async {
-    if (_isProcessing) return;
+    if (_isProcessingNotifier.value) return;
     if (_items.isEmpty) return;
     if (_items.pending.isEmpty) return;
-    _isProcessing = true;
+    _isProcessingNotifier.value = true;
     _notifyListeners(
       QueueCallback.onStart,
       positionalArguments: [_currentBatchId],
@@ -81,7 +83,7 @@ class EasyQueue<T> {
         positionalArguments: [currentBatchItems],
       );
       _currentBatchId = const Uuid().v4();
-      _isProcessing = false;
+      _isProcessingNotifier.value = false;
     }
   }
 

@@ -35,15 +35,3 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
         'Cancelled: ${cancelled.length}';
   }
 }
-
-class Test<T> {
-  final List<QueueItem<T>> _queuedImages = [];
-
-  Iterable<QueueItem<T>> get h => _queuedImages.pending;
-
-  Iterable<QueueItem<T>> grab() => _queuedImages;
-
-  void t() {
-    grab().pending;
-  }
-}
