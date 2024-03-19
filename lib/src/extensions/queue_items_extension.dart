@@ -25,6 +25,15 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
     // round to 2 decimal places;
     return double.parse(percentage.toStringAsFixed(2));
   }
+
+  String summary() {
+    return 'QueueItems: '
+        'Pending: ${pending.length}, '
+        'Processing: ${processing.length}, '
+        'Completed: ${completed.length}, '
+        'Failed: ${failed.length}, '
+        'Cancelled: ${cancelled.length}';
+  }
 }
 
 class Test<T> {
