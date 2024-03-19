@@ -47,16 +47,16 @@ class EasyQueue<T> {
     _removeListener(QueueCallback.onStart, callback);
   }
 
-  String addOnUpdateListener(OnUpdateCallback<T> callback) {
-    return _addListener(QueueCallback.onItemUpdated, callback);
+  void addOnUpdateListener(OnUpdateCallback<T> callback) {
+    _addListener(QueueCallback.onItemUpdated, callback);
   }
 
   void removeOnUpdateListener(OnUpdateCallback<T> callback) {
     _removeListener(QueueCallback.onItemUpdated, callback);
   }
 
-  String addOnDoneListener(OnDoneCallback<T> callback) {
-    return _addListener(QueueCallback.onDone, callback);
+  void addOnDoneListener(OnDoneCallback<T> callback) {
+    _addListener(QueueCallback.onDone, callback);
   }
 
   void removeOnDoneListener(OnDoneCallback<T> callback) {
