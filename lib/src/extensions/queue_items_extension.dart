@@ -20,8 +20,10 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
 
   /// progress
   double get progress {
-    if (isEmpty || pending.isEmpty) return 1;
-    final percentage = 1 - (pending.length / length);
+    if (isEmpty) return 1;
+    final inProgressTotal = processing.length + pending.length;
+    if (inProgressTotal == 0) return 1;
+    final percentage = 1 - (inProgressTotal / length);
     // round to 2 decimal places;
     return double.parse(percentage.toStringAsFixed(2));
   }
