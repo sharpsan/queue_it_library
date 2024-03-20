@@ -24,7 +24,6 @@ class EasyQueue<T> {
 
   /// state
   final List<QueueItem<T>> _items = [];
-  List<QueueItem<T>> get queuedImages => _items;
   final _isProcessingNotifier = ValueNotifier(false);
   late String _currentBatchId;
 

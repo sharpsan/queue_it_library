@@ -11,28 +11,59 @@ and the Flutter guide for
 [developing packages and plugins](https://flutter.dev/developing-packages).
 -->
 
-This package makes working with queues easy.
+# Easy Queue
+
+Easy Queue is a Flutter library designed to simplify the process of managing and processing queues in your Flutter applications.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- Queue management: Easily add, remove, and process items in a queue.
+- Event listeners: Listen for updates to the queue and react accordingly.
+- Extensions: Extend the functionality of your queues with additional methods.
 
-## Getting started
+## Installation
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+To use this library in your project, add it to your `pubspec.yaml` file:
+
+```yaml
+dependencies:
+  easy_queue: ^1.0.0
+```
+
+Then, run `flutter pub get` to fetch the package.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+Here's a basic example of how to use Easy Queue:
 
 ```dart
-const like = 'sample';
+import 'package:easy_queue/easy_queue.dart';
+
+void main() {
+  final queue = EasyQueue<int>();
+
+  queue.onUpdate.listen((event) {
+    print('Queue updated: $event');
+  });
+
+  queue.add(1);
+  queue.add(2);
+  queue.add(3);
+
+  print(queue.items); // Prints: [1, 2, 3]
+}
 ```
 
-## Additional information
+In this example, we create an `EasyQueue` of integers, add a listener for the `onUpdate` event, and add some items to the queue.
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+## Documentation
+
+For more information on how to use Easy Queue, including a full API reference, check out the [documentation](https://example.com/docs).
+
+## Contributing
+
+We welcome contributions to Easy Queue! Please see our [contributing guide](https://example.com/contributing) for more information.
+
+## License
+
+Easy Queue is licensed under the [MIT License](https://example.com/license).
