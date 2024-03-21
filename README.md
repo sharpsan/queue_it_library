@@ -27,7 +27,7 @@ To use this library in your project, add it to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  easy_queue: ^1.0.0
+  easy_queue: ^0.0.1
 ```
 
 Then, run `flutter pub get` to fetch the package.
