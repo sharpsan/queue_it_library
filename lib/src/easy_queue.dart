@@ -44,13 +44,14 @@ class EasyQueue<T> {
   Stream<Iterable<QueueItem<T>>> get onDone => _onDoneStreamController.stream;
 
   /// Returns batch id
-  final _onStartStreamController = StreamController<String>();
+  final _onStartStreamController = StreamController<String>.broadcast();
 
   /// Returns snapshot of the updated item
-  final _onUpdateStreamController = StreamController<QueueItem<T>>();
+  final _onUpdateStreamController = StreamController<QueueItem<T>>.broadcast();
 
   /// Returns processed items
-  final _onDoneStreamController = StreamController<Iterable<QueueItem<T>>>();
+  final _onDoneStreamController =
+      StreamController<Iterable<QueueItem<T>>>.broadcast();
 
   Future<void> start() async {
     if (_isProcessingNotifier.value) return;
