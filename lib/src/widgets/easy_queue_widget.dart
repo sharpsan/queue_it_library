@@ -7,6 +7,7 @@ class EasyQueueWidget<T> extends StatefulWidget {
     required this.queue,
     required this.builder,
   });
+
   final EasyQueue<T> queue;
   final Widget Function(BuildContext context, bool processing) builder;
 
@@ -17,6 +18,7 @@ class EasyQueueWidget<T> extends StatefulWidget {
 class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
   @override
   Widget build(BuildContext context) {
+    //TODO: make this widget update there is any change in the queue
     return ValueListenableBuilder(
       valueListenable: widget.queue.isProcessingNotifier,
       builder: (context, isProcessing, child) {

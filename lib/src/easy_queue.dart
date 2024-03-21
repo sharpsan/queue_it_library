@@ -1,22 +1,21 @@
 import 'dart:async';
 
-import 'package:easy_queue/src/callbacks/on_start_callback.dart';
+import 'package:easy_queue/src/callbacks/item_handler.dart';
 import 'package:easy_queue/src/extensions/queue_items_extension.dart';
-import 'package:easy_queue/src/models/queue_callback.dart';
 import 'package:easy_queue/src/models/queue_item.dart';
 import 'package:easy_queue/src/models/queue_item_status.dart';
-import 'package:easy_queue/src/callbacks/item_handler.dart';
-import 'package:easy_queue/src/callbacks/on_done_callback.dart';
-import 'package:easy_queue/src/callbacks/on_update_callback.dart';
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
 class EasyQueue<T> {
   EasyQueue({
+    this.itemHandler,
     this.retryCount = 3,
   }) {
     _currentBatchId = const Uuid().v4();
   }
+
+  /// The number of times to retry processing an item before marking it as failed.
   final int retryCount;
 
   /// Called when an item is being processed.
@@ -28,62 +27,58 @@ class EasyQueue<T> {
   late String _currentBatchId;
 
   ValueNotifier<bool> get isProcessingNotifier => _isProcessingNotifier;
+
   bool get isProcessing => _isProcessingNotifier.value;
+
   Iterable<QueueItem<T>> get currentBatchItems => items(_currentBatchId);
+
   Iterable<QueueItem<T>> items([String? batchId]) =>
       _items.where((e) => batchId == null || e.batchId == batchId);
 
-  /// listener callbacks
+  /// listeners
 
-  final _statusChangeCallbacks = <QueueCallback, dynamic>{
-    QueueCallback.onStart: {},
-    QueueCallback.onItemUpdated: {},
-    QueueCallback.onDone: {},
-  };
+  Stream<String> get onStart => _onStartStreamController.stream;
 
-  void addOnStartListener(OnStartCallback callback) {
-    _addListener(QueueCallback.onStart, callback);
-  }
+  Stream<QueueItem<T>> get onUpdate => _onUpdateStreamController.stream;
 
-  void removeOnStartListener(OnStartCallback callback) {
-    _removeListener(QueueCallback.onStart, callback);
-  }
+  Stream<Iterable<QueueItem<T>>> get onDone => _onDoneStreamController.stream;
 
-  void addOnUpdateListener(OnUpdateCallback<T> callback) {
-    _addListener(QueueCallback.onItemUpdated, callback);
-  }
+  /// Returns batch id
+  final _onStartStreamController = StreamController<String>();
 
-  void removeOnUpdateListener(OnUpdateCallback<T> callback) {
-    _removeListener(QueueCallback.onItemUpdated, callback);
-  }
+  /// Returns snapshot of the updated item
+  final _onUpdateStreamController = StreamController<QueueItem<T>>();
 
-  void addOnDoneListener(OnDoneCallback<T> callback) {
-    _addListener(QueueCallback.onDone, callback);
-  }
+  /// Returns processed items
+  final _onDoneStreamController = StreamController<Iterable<QueueItem<T>>>();
 
-  void removeOnDoneListener(OnDoneCallback<T> callback) {
-    _removeListener(QueueCallback.onDone, callback);
-  }
-
-  Future<void> processQueue() async {
+  Future<void> start() async {
     if (_isProcessingNotifier.value) return;
     if (_items.isEmpty) return;
     if (_items.pending.isEmpty) return;
     _isProcessingNotifier.value = true;
-    _notifyListeners(
-      QueueCallback.onStart,
-      positionalArguments: [_currentBatchId],
-    );
+    _onStartStreamController.add(_currentBatchId);
     try {
       await _processQueueItems();
     } finally {
-      _notifyListeners(
-        QueueCallback.onDone,
-        positionalArguments: [currentBatchItems],
-      );
+      _onDoneStreamController.add(currentBatchItems);
       _currentBatchId = const Uuid().v4();
       _isProcessingNotifier.value = false;
     }
+  }
+
+  void stop() {
+    _isProcessingNotifier.value = false;
+  }
+
+  void clear(QueueItem<T> item) {
+    if (isProcessing) throw StateError('Cannot clear queue while processing');
+    _items.remove(item);
+  }
+
+  void clearAll() {
+    if (isProcessing) throw StateError('Cannot clear queue while processing');
+    _items.clear();
   }
 
   void cancelAll() {
@@ -111,15 +106,17 @@ class EasyQueue<T> {
   }
 
   void dispose() {
-    _statusChangeCallbacks.forEach((key, value) {
-      value.clear();
-    });
+    _onStartStreamController.close();
+    _onUpdateStreamController.close();
+    _onDoneStreamController.close();
   }
 
   //////// INTERNALS ////////
 
   Future<void> _processQueueItems() async {
     for (final item in _items) {
+      if (!isProcessing) return;
+      //TODO: figure out a way to stop the currently-running future
       await _processQueueItem(item);
     }
   }
@@ -139,30 +136,21 @@ class EasyQueue<T> {
   }
 
   Future<void> _handleQueuedItem(QueueItem<T> item) async {
-    item
-      ..status = QueueItemStatus.processing
-      ..startedProcessingAt = DateTime.now();
-    _notifyListeners(
-      QueueCallback.onItemUpdated,
-      positionalArguments: [item.status, item],
-    );
     try {
-      await itemHandler?.call(item);
+      item
+        ..status = QueueItemStatus.processing
+        ..startedProcessingAt = DateTime.now();
+      _onUpdateStreamController.add(item);
+      await itemHandler?.call(item.copyWith());
       item
         ..status = QueueItemStatus.completed
         ..completedAt = DateTime.now();
-      _notifyListeners(
-        QueueCallback.onItemUpdated,
-        positionalArguments: [item.status, item],
-      );
+      _onUpdateStreamController.add(item.copyWith());
     } catch (e) {
       item
         ..status = QueueItemStatus.failed
         ..failedAt = DateTime.now();
-      _notifyListeners(
-        QueueCallback.onItemUpdated,
-        positionalArguments: [item.status, item],
-      );
+      _onUpdateStreamController.add(item.copyWith());
     }
   }
 
@@ -170,38 +158,12 @@ class EasyQueue<T> {
     if (item.retryCount < retryCount) {
       item.status = QueueItemStatus.pending;
       item.retryCount++;
-      _notifyListeners(
-        QueueCallback.onItemUpdated,
-        positionalArguments: [item.status, item],
-      );
+      _onUpdateStreamController.add(item.copyWith());
     } else {
       item
         ..status = QueueItemStatus.canceled
         ..canceledAt = DateTime.now();
-      _notifyListeners(
-        QueueCallback.onItemUpdated,
-        positionalArguments: [item.status, item],
-      );
-    }
-  }
-
-  String _addListener(QueueCallback callbackType, dynamic callback) {
-    final key = const Uuid().v4();
-    _statusChangeCallbacks[callbackType]![key] = callback;
-    return key;
-  }
-
-  void _removeListener(QueueCallback callbackType, dynamic callback) {
-    _statusChangeCallbacks[callbackType]!.remove(callback);
-  }
-
-  void _notifyListeners(
-    QueueCallback callbackType, {
-    List<dynamic>? positionalArguments = const [],
-    Map<Symbol, dynamic>? namedArguments = const {},
-  }) {
-    for (final callback in _statusChangeCallbacks[callbackType]!.values) {
-      Function.apply(callback, positionalArguments, namedArguments);
+      _onUpdateStreamController.add(item.copyWith());
     }
   }
 }

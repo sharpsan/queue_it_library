@@ -23,4 +23,28 @@ class QueueItem<T> {
   DateTime? canceledAt;
   QueueItemStatus status;
   int retryCount;
+
+  QueueItem<T> copyWith({
+    T? data,
+    String? batchId,
+    DateTime? queuedAt,
+    DateTime? startedProcessingAt,
+    DateTime? completedAt,
+    DateTime? failedAt,
+    DateTime? canceledAt,
+    QueueItemStatus? status,
+    int? retryCount,
+  }) {
+    return QueueItem<T>(
+      data: data ?? this.data,
+      batchId: batchId ?? this.batchId,
+      queuedAt: queuedAt ?? this.queuedAt,
+      startedProcessingAt: startedProcessingAt ?? this.startedProcessingAt,
+      completedAt: completedAt ?? this.completedAt,
+      failedAt: failedAt ?? this.failedAt,
+      canceledAt: canceledAt ?? this.canceledAt,
+      status: status ?? this.status,
+      retryCount: retryCount ?? this.retryCount,
+    );
+  }
 }
