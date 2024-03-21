@@ -40,21 +40,28 @@ Here's a basic example of how to use Easy Queue:
 import 'package:easy_queue/easy_queue.dart';
 
 void main() {
-  final queue = EasyQueue<int>();
-
-  queue.onUpdate.listen((event) {
+  final queue = EasyQueue<int>()
+    ..itemHandler = (item) async {
+    print('Handling item: $item');
+    await Future.delayed(Duration(seconds: 1));
+  }
+  ..onUpdate.listen((event) {
     print('Queue updated: $event');
   });
 
   queue.add(1);
   queue.add(2);
   queue.add(3);
-
+  
+  queue.start();
+  
   print(queue.items); // Prints: [1, 2, 3]
 }
 ```
 
-In this example, we create an `EasyQueue` of integers, add a listener for the `onUpdate` event, and add some items to the queue.
+In this example, we create an `EasyQueue` of integers, define an `itemHandler`, add a listener for the `onUpdate` event, and add some items to the queue.
+
+For a more in-depth look at how to use Easy Queue, check out the example project.
 
 ## Documentation
 
