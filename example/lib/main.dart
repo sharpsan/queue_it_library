@@ -26,22 +26,18 @@ class _ExampleAppState extends State<ExampleApp> {
       }
       ..onStart.listen((event) {
         print('Upload started: $event');
-        setState(() {});
       })
       ..onUpdate.listen((event) {
         print('Upload updated: $event');
-        setState(() {});
       })
       ..onDone.listen((event) {
         print('Upload done: $event');
-        setState(() {});
       });
     super.initState();
   }
 
   void _addImage(String imageUrl) {
     _queue.add(imageUrl);
-    setState(() {});
   }
 
   @override
@@ -63,7 +59,6 @@ class _ExampleAppState extends State<ExampleApp> {
                 FloatingActionButton(
                   onPressed: () {
                     _queue.stop();
-                    setState(() {});
                   },
                   tooltip: 'Cancel Queue',
                   backgroundColor: Colors.red,
@@ -76,7 +71,6 @@ class _ExampleAppState extends State<ExampleApp> {
                   backgroundColor: Colors.green,
                   onPressed: () {
                     _queue.clearAll();
-                    setState(() {});
                   },
                   child: const Icon(Icons.check),
                 )
@@ -118,7 +112,6 @@ class _ExampleAppState extends State<ExampleApp> {
                     key: Key(item.data),
                     onDismissed: (direction) {
                       _queue.clear(item);
-                      setState(() {});
                     },
                     child: ListTile(
                       leading: Image.network(item.data),

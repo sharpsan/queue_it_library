@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:easy_queue/easy_queue.dart';
 import 'package:flutter/widgets.dart';
 
+/// This widget calls the `builder` function whenever the queue is updated.
 class EasyQueueWidget<T> extends StatefulWidget {
   const EasyQueueWidget({
     super.key,
@@ -9,21 +12,41 @@ class EasyQueueWidget<T> extends StatefulWidget {
   });
 
   final EasyQueue<T> queue;
-  final Widget Function(BuildContext context, bool processing) builder;
+  final Widget Function(BuildContext context) builder;
 
   @override
   State<EasyQueueWidget<T>> createState() => _EasyQueueWidgetState<T>();
 }
 
 class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
+  StreamSubscription<String>? _onStartSubscription;
+  StreamSubscription<QueueItem<T>>? _onUpdateSubscription;
+  StreamSubscription<Iterable<QueueItem<T>>>? _onDoneSubscription;
+
+  @override
+  void initState() {
+    _onStartSubscription = widget.queue.onStart.listen((batchId) {
+      setState(() {});
+    });
+    _onUpdateSubscription = widget.queue.onUpdate.listen((item) {
+      setState(() {});
+    });
+    _onDoneSubscription = widget.queue.onDone.listen((items) {
+      setState(() {});
+    });
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _onStartSubscription?.cancel();
+    _onUpdateSubscription?.cancel();
+    _onDoneSubscription?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    //TODO: make this widget update there is any change in the queue
-    return ValueListenableBuilder(
-      valueListenable: widget.queue.isProcessingNotifier,
-      builder: (context, isProcessing, child) {
-        return widget.builder(context, isProcessing);
-      },
-    );
+    return widget.builder(context);
   }
 }
