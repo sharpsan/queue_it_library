@@ -28,9 +28,7 @@ class EasyQueue<T> {
 
   /// An internal stream controller is being used for tracking item processing events
   /// to eliminate the chances of a user disposing the `onUpdate` [StreamController].
-  final _itemController = StreamController<QueueItem<T>>.broadcast(
-    sync: true, //TODO: do I need sync?
-  );
+  final _itemController = StreamController<QueueItem<T>>.broadcast();
 
   StreamSubscription<QueueItem<T>>? _itemSubscription;
 
