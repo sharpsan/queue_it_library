@@ -13,13 +13,15 @@ and the Flutter guide for
 
 # Easy Queue
 
-Easy Queue is a Flutter library designed to simplify the process of managing and processing queues in your Flutter applications.
+Easy Queue is a Flutter library designed to simplify the process of managing and processing queues in your Flutter
+applications.
 
 ## Features
 
 - Queue management: Easily add, remove, and process items in a queue.
 - Event listeners: Listen for updates to the queue and react accordingly.
-- Extensions: Extend the functionality of your queues with additional methods.
+- Concurrency: Control the number of items processed concurrently.
+- Retries: Automatically retry failed items a specified number of times.
 
 ## Installation
 
@@ -40,36 +42,41 @@ Here's a basic example of how to use Easy Queue:
 import 'package:easy_queue/easy_queue.dart';
 
 void main() {
-  final queue = EasyQueue<int>()
-    ..itemHandler = (item) async {
-    print('Handling item: $item');
-    await Future.delayed(Duration(seconds: 1));
-  }
-  ..onUpdate.listen((event) {
-    print('Queue updated: $event');
-  });
+  final queue = EasyQueue<int>(
+      concurrentOperations: 1,
+      retryLimit: 3,
+      itemHandler: (item) async {
+        print('Handling item: $item');
+        await Future.delayed(Duration(seconds: 1));
+      })
+    ..onUpdate.listen((event) {
+      print('Queue updated: $event');
+    });
 
   queue.add(1);
   queue.add(2);
   queue.add(3);
-  
+
   queue.start();
-  
+
   print(queue.items); // Prints: [1, 2, 3]
 }
 ```
 
-In this example, we create an `EasyQueue` of integers, define an `itemHandler`, add a listener for the `onUpdate` event, and add some items to the queue.
+In this example, we create an `EasyQueue` of integers, define an `itemHandler`, add a listener for the `onUpdate` event,
+and add some items to the queue.
 
 For a more in-depth look at how to use Easy Queue, check out the example project.
 
 ## Documentation
 
-For more information on how to use Easy Queue, including a full API reference, check out the [documentation](https://example.com/docs).
+For more information on how to use Easy Queue, including a full API reference, check out
+the [documentation](https://example.com/docs).
 
 ## Contributing
 
-We welcome contributions to Easy Queue! Please see our [contributing guide](https://example.com/contributing) for more information.
+We welcome contributions to Easy Queue! Please see our [contributing guide](https://example.com/contributing) for more
+information.
 
 ## License
 

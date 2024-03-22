@@ -12,7 +12,7 @@ import 'package:uuid/uuid.dart';
 class EasyQueue<T> {
   EasyQueue({
     required this.itemHandler,
-    this.retryCount = 3,
+    this.retryLimit = 3,
     this.concurrentOperations = 1,
   }) {
     _currentBatchId = const Uuid().v4();
@@ -36,7 +36,7 @@ class EasyQueue<T> {
   final int concurrentOperations;
 
   /// The number of times to retry processing an item before marking it as failed.
-  final int retryCount;
+  final int retryLimit;
 
   /// The function that will be called to process each item in the queue.
   final ItemHandler<T> itemHandler;
@@ -199,7 +199,7 @@ class EasyQueue<T> {
 
   /// Handles a failed item by either retrying it or marking it as failed.
   void _handleFailedItem(QueueItem<T> item) {
-    if (item.retryCount < retryCount) {
+    if (item.retryCount < retryLimit) {
       item.status = QueueItemStatus.pending;
       item.retryCount++;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);

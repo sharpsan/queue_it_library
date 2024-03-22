@@ -19,7 +19,7 @@ class ExampleApp extends StatefulWidget {
 class _ExampleAppState extends State<ExampleApp> {
   final _queue = EasyQueue<String>(
     concurrentOperations: 1,
-    retryCount: 3,
+    retryLimit: 3,
     itemHandler: (item) async {
       log('Processing item: $item');
       await Future.delayed(const Duration(seconds: 1));
