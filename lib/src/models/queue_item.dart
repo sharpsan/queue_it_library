@@ -7,6 +7,7 @@ class QueueItem<T> {
     required this.data,
     required this.status,
     required this.batchId,
+    String? id,
     this.queuedAt,
     this.startedProcessingAt,
     this.completedAt,
@@ -14,7 +15,7 @@ class QueueItem<T> {
     this.canceledAt,
     this.clearedAt,
     this.retryCount = 0,
-  }) : id = const Uuid().v4();
+  }) : id = id ?? const Uuid().v4();
 
   final String id;
 
@@ -31,6 +32,7 @@ class QueueItem<T> {
   int retryCount;
 
   QueueItem<T> copyWith({
+    String? id,
     T? data,
     String? batchId,
     DateTime? queuedAt,
@@ -43,6 +45,7 @@ class QueueItem<T> {
     int? retryCount,
   }) {
     return QueueItem<T>(
+      id: id ?? this.id,
       data: data ?? this.data,
       batchId: batchId ?? this.batchId,
       queuedAt: queuedAt ?? this.queuedAt,
