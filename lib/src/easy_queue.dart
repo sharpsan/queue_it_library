@@ -148,7 +148,11 @@ class EasyQueue<T> {
       await _semaphore.acquire();
       await _processQueueItem(event);
       _semaphore.release();
-      _isProcessing = false;
+
+      // Check if there are any more items in the queue
+      if (_items.pending.isEmpty) {
+        _isProcessing = false;
+      }
     });
 
     /// add all existing items to the stream controller so they get processed
@@ -216,7 +220,7 @@ class EasyQueue<T> {
       QueueSnapshot(
         event: event,
         isStarted: _isStarted,
-        isProcessing: isProcessing,
+        isProcessing: _isProcessing,
         currentBatchId: _currentBatchId,
         updatedItem: item?.copyWith(),
         items: currentBatchItems.map((e) => e.copyWith()).toList(),

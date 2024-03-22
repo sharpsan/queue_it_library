@@ -12,7 +12,10 @@ class EasyQueueWidget<T> extends StatefulWidget {
   final EasyQueue<T> queue;
 
   /// The builder function that will be called when the queue updates.
-  final Widget Function(BuildContext context, QueueSnapshot? snapshot) builder;
+  final Widget Function(
+    BuildContext context,
+    QueueSnapshot<T>? snapshot,
+  ) builder;
 
   @override
   State<EasyQueueWidget<T>> createState() => _EasyQueueWidgetState<T>();
