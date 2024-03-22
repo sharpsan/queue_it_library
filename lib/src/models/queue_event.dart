@@ -1,7 +1,9 @@
 enum QueueEvent {
-  started,
+  startedQueue,
+  startedProcessing,
   itemStatusUpdated,
-  clearAll,
-  cancelAll,
-  stopped,
+  clearedAll,
+  cancelledAll,
+  stoppedProcessing,
+  stoppedQueue,
 }

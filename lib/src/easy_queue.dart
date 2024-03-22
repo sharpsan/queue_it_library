@@ -67,7 +67,7 @@ class EasyQueue<T> {
   void start() async {
     if (_isStarted) return;
     _isStarted = true;
-    _sendOnUpdateEvent(QueueEvent.started, null);
+    _sendOnUpdateEvent(QueueEvent.startedQueue, null);
     _processQueueItemsOnDemand();
   }
 
@@ -76,7 +76,7 @@ class EasyQueue<T> {
   void stop() {
     if (!_isStarted) return;
     _isStarted = false;
-    _sendOnUpdateEvent(QueueEvent.stopped, null);
+    _sendOnUpdateEvent(QueueEvent.stoppedQueue, null);
     _itemSubscription?.cancel();
   }
 
@@ -108,7 +108,7 @@ class EasyQueue<T> {
   /// If any items are currently being processed, this will throw a [StateError].
   void clearAll() {
     _items.clear();
-    _sendOnUpdateEvent(QueueEvent.clearAll, null);
+    _sendOnUpdateEvent(QueueEvent.clearedAll, null);
   }
 
   /// Cancels a single item in the queue.
@@ -122,7 +122,7 @@ class EasyQueue<T> {
     for (final item in _items) {
       _cancel(item);
     }
-    _sendOnUpdateEvent(QueueEvent.cancelAll, null);
+    _sendOnUpdateEvent(QueueEvent.cancelledAll, null);
   }
 
   void _cancel(QueueItem<T> item) {
@@ -144,7 +144,10 @@ class EasyQueue<T> {
   /// Processes the queue items as they become available.
   void _processQueueItemsOnDemand() async {
     _itemSubscription = _itemController.stream.listen((event) async {
-      _isProcessing = true;
+      if (!_isProcessing) {
+        _isProcessing = true;
+        _sendOnUpdateEvent(QueueEvent.startedProcessing, null);
+      }
       await _semaphore.acquire();
       await _processQueueItem(event);
       _semaphore.release();
@@ -152,6 +155,7 @@ class EasyQueue<T> {
       // Check if there are any more items in the queue
       if (_items.pending.isEmpty) {
         _isProcessing = false;
+        _sendOnUpdateEvent(QueueEvent.stoppedProcessing, null);
       }
     });
 
