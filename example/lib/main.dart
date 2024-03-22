@@ -17,7 +17,9 @@ class ExampleApp extends StatefulWidget {
 }
 
 class _ExampleAppState extends State<ExampleApp> {
-  final _queue = EasyQueue<String>();
+  final _queue = EasyQueue<String>(
+    concurrentOperations: 3,
+  );
   final _faker = Faker();
   StreamSubscription<QueueSnapshot<String>>? _subscription;
 

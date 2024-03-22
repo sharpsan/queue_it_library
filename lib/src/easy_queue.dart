@@ -6,12 +6,14 @@ import 'package:easy_queue/src/models/queue_event.dart';
 import 'package:easy_queue/src/models/queue_item.dart';
 import 'package:easy_queue/src/models/queue_item_status.dart';
 import 'package:easy_queue/src/models/queue_snapshot.dart';
+import 'package:easy_queue/src/models/semaphore.dart';
 import 'package:uuid/uuid.dart';
 
 class EasyQueue<T> {
   EasyQueue({
     this.itemHandler,
     this.retryCount = 3,
+    this.concurrentOperations = 1,
   }) {
     _currentBatchId = const Uuid().v4();
   }
@@ -20,16 +22,20 @@ class EasyQueue<T> {
   final _onUpdateStreamController =
       StreamController<QueueSnapshot<T>>.broadcast();
   late String _currentBatchId;
+  late final _semaphore = Semaphore(concurrentOperations);
   var _isStarted = false;
   var _isProcessing = false;
 
   /// An internal stream controller is being used for tracking item processing events
   /// to eliminate the chances of a user disposing the `onUpdate` [StreamController].
   final _itemController = StreamController<QueueItem<T>>.broadcast(
-    sync: true,
+    sync: true, //TODO: do I need sync?
   );
 
   StreamSubscription<QueueItem<T>>? _itemSubscription;
+
+  /// The number of concurrent operations that can be processed at once.
+  final int concurrentOperations;
 
   /// The number of times to retry processing an item before marking it as failed.
   final int retryCount;
@@ -137,13 +143,10 @@ class EasyQueue<T> {
 
   /// Processes the queue items as they become available.
   void _processQueueItemsOnDemand() async {
-    Future<void> lastItemProcessed =
-        Future.value(); // Start with a completed Future
-
-    _itemSubscription = _itemController.stream.listen((event) {
+    _itemSubscription = _itemController.stream.listen((event) async {
       _isProcessing = true;
-      lastItemProcessed =
-          lastItemProcessed.then((_) => _processQueueItem(event));
+      await _semaphore.acquire();
+      _processQueueItem(event).whenComplete(() => _semaphore.release());
     }, onDone: () {
       _isProcessing = false;
     });
