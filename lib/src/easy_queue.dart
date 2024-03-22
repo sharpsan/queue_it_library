@@ -146,8 +146,8 @@ class EasyQueue<T> {
     _itemSubscription = _itemController.stream.listen((event) async {
       _isProcessing = true;
       await _semaphore.acquire();
-      _processQueueItem(event).whenComplete(() => _semaphore.release());
-    }, onDone: () {
+      await _processQueueItem(event);
+      _semaphore.release();
       _isProcessing = false;
     });
 
