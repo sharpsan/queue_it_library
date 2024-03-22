@@ -44,7 +44,7 @@ class _ExampleAppState extends State<ExampleApp> {
     return MaterialApp(
       home: EasyQueueWidget(
         queue: _queue,
-        builder: (context) {
+        builder: (context, snapshot) {
           final items = _queue.items();
           return Scaffold(
             appBar: AppBar(

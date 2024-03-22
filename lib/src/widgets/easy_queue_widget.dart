@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:easy_queue/easy_queue.dart';
-import 'package:easy_queue/src/models/queue_snapshot.dart';
 import 'package:flutter/widgets.dart';
 
 class EasyQueueWidget<T> extends StatefulWidget {
@@ -22,27 +19,22 @@ class EasyQueueWidget<T> extends StatefulWidget {
 }
 
 class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
-  StreamSubscription<QueueSnapshot<T>>? _onUpdateSubscription;
-  QueueSnapshot? _lastSnapshot;
-
-  @override
-  void initState() {
-    _onUpdateSubscription = widget.queue.onUpdate.listen((item) {
-      setState(() {
-        _lastSnapshot = item;
-      });
-    });
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    _onUpdateSubscription?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    return widget.builder(context, _lastSnapshot);
+    return StreamBuilder<QueueSnapshot<T>>(
+      stream: widget.queue.onUpdate,
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<QueueSnapshot<T>> snapshot,
+      ) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        } else if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        } else {
+          return widget.builder(context, snapshot.data);
+        }
+      },
+    );
   }
 }
