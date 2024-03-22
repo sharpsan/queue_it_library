@@ -92,23 +92,21 @@ class EasyQueue<T> {
       batchId: _currentBatchId,
     );
     _items.add(item);
-    _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, null);
+    _sendOnUpdateEvent(QueueEvent.itemAdded, item.copyWith());
     _itemController.add(item);
   }
 
-  /// Clears a single item in the queue.
-  /// If the item is currently being processed, this will throw a [StateError].
-  void clear(QueueItem<T> item) {
-    final itemCopy = item.copyWith()..status = QueueItemStatus.cleared;
+  /// Removes a single item in the queue.
+  void remove(QueueItem<T> item) {
+    final itemCopy = item.copyWith()..status = QueueItemStatus.removed;
     _items.remove(item);
-    _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, itemCopy);
+    _sendOnUpdateEvent(QueueEvent.itemRemoved, itemCopy);
   }
 
-  /// Clears all items in the queue.
-  /// If any items are currently being processed, this will throw a [StateError].
-  void clearAll() {
+  /// Removes all items in the queue.
+  void removeAll() {
     _items.clear();
-    _sendOnUpdateEvent(QueueEvent.clearedAll, null);
+    _sendOnUpdateEvent(QueueEvent.removedAll, null);
   }
 
   /// Cancels a single item in the queue.
@@ -172,7 +170,7 @@ class EasyQueue<T> {
       case QueueItemStatus.processing:
       case QueueItemStatus.completed:
       case QueueItemStatus.canceled:
-      case QueueItemStatus.cleared:
+      case QueueItemStatus.removed:
         break;
       case QueueItemStatus.pending:
         await _handleQueuedItem(item);

@@ -74,7 +74,7 @@ class _ExampleAppState extends State<ExampleApp> {
                     FloatingActionButton(
                       backgroundColor: Colors.green,
                       onPressed: () {
-                        _queue.clearAll();
+                        _queue.removeAll();
                       },
                       child: const Icon(Icons.check),
                     )
@@ -126,7 +126,7 @@ class _ExampleAppState extends State<ExampleApp> {
                             return Dismissible(
                               key: Key(item.data),
                               onDismissed: (direction) {
-                                _queue.clear(item);
+                                _queue.remove(item);
                               },
                               child: ListTile(
                                 leading: Image.network(item.data),
@@ -177,7 +177,7 @@ class _ExampleAppState extends State<ExampleApp> {
         return const Icon(Icons.cancel);
 
       /// unused
-      case QueueItemStatus.cleared:
+      case QueueItemStatus.removed:
         return const Icon(Icons.delete);
     }
   }

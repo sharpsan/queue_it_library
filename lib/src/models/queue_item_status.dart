@@ -4,5 +4,5 @@ enum QueueItemStatus {
   completed,
   failed,
   canceled,
-  cleared,
+  removed,
 }
