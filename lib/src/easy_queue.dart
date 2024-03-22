@@ -62,11 +62,15 @@ class EasyQueue<T> {
 
   /// Starts the queue.
   /// If the queue is already running, this will do nothing.
-  void start() async {
+  /// 
+  /// [stopAutomatically] - Whether to stop the queue automatically after all items have been processed.
+  void start({
+    bool stopAutomatically = false,
+  }) async {
     if (_isStarted) return;
     _isStarted = true;
     _sendOnUpdateEvent(QueueEvent.startedQueue, null);
-    _processQueueItemsOnDemand();
+    _processQueueItemsOnDemand(stopAutomatically: stopAutomatically);
   }
 
   /// Stops the queue from processing any more items.
@@ -138,7 +142,11 @@ class EasyQueue<T> {
   //////// INTERNALS ////////
 
   /// Processes the queue items as they become available.
-  void _processQueueItemsOnDemand() async {
+  /// 
+  /// [stopAutomatically] - Whether to stop the queue automatically after all items have been processed.
+  void _processQueueItemsOnDemand({
+    bool stopAutomatically = false,
+  }) async {
     _itemSubscription = _itemController.stream.listen((event) async {
       if (!_isProcessing) {
         _isProcessing = true;
@@ -152,6 +160,7 @@ class EasyQueue<T> {
       if (_items.pending.isEmpty) {
         _isProcessing = false;
         _sendOnUpdateEvent(QueueEvent.stoppedProcessing, null);
+        if (stopAutomatically) stop();
       }
     });
 
