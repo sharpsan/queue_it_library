@@ -1,4 +1,5 @@
 import 'package:easy_queue/src/models/queue_item_status.dart';
+import 'package:uuid/uuid.dart';
 
 //TODO: should this be an immutable object?  Will that improve performance?
 class QueueItem<T> {
@@ -13,7 +14,9 @@ class QueueItem<T> {
     this.canceledAt,
     this.clearedAt,
     this.retryCount = 0,
-  });
+  }) : id = const Uuid().v4();
+
+  final String id;
 
   final T data;
   final String batchId;
