@@ -11,7 +11,7 @@ import 'package:uuid/uuid.dart';
 
 class EasyQueue<T> {
   EasyQueue({
-    this.itemHandler,
+    required this.itemHandler,
     this.retryCount = 3,
     this.concurrentOperations = 1,
   }) {
@@ -39,7 +39,7 @@ class EasyQueue<T> {
   final int retryCount;
 
   /// The function that will be called to process each item in the queue.
-  ItemHandler<T>? itemHandler;
+  final ItemHandler<T> itemHandler;
 
   /// The current batch id
   String get currentBatchId => _currentBatchId;
