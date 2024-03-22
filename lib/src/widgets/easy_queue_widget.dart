@@ -27,13 +27,7 @@ class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
         BuildContext context,
         AsyncSnapshot<QueueSnapshot<T>> snapshot,
       ) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        } else if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
-        } else {
-          return widget.builder(context, snapshot.data);
-        }
+        return widget.builder(context, snapshot.data);
       },
     );
   }
