@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:easy_queue/easy_queue.dart';
@@ -18,22 +19,24 @@ class ExampleApp extends StatefulWidget {
 class _ExampleAppState extends State<ExampleApp> {
   final _queue = EasyQueue<String>();
   final _faker = Faker();
+  StreamSubscription<QueueSnapshot<String>>? _subscription;
 
   @override
   void initState() {
-    _queue
-      ..itemHandler = (item) async {
-        log('Processing item: $item');
-        await Future.delayed(const Duration(seconds: 1));
-      }
-      ..onUpdate.listen((event) {
-        log('Queue updated: $event');
-      });
+    _queue.itemHandler = (item) async {
+      log('Processing item: $item');
+      await Future.delayed(const Duration(seconds: 1));
+    };
+    _subscription = _queue.onUpdate.listen((event) {
+      log('Queue updated: $event');
+    });
     super.initState();
   }
 
-  void _addImage(String imageUrl) {
-    _queue.add(imageUrl);
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -55,7 +58,7 @@ class _ExampleAppState extends State<ExampleApp> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   /// Start queue
-                  if (_queue.isProcessing)
+                  if (_queue.isStarted)
                     FloatingActionButton(
                       onPressed: () {
                         _queue.stop();
@@ -66,7 +69,8 @@ class _ExampleAppState extends State<ExampleApp> {
                     )
 
                   /// "Done" fab
-                  else if (_queue.items().pending.isEmpty)
+                  else if (_queue.items().pending.isEmpty &&
+                      _queue.items().isNotEmpty)
                     FloatingActionButton(
                       backgroundColor: Colors.green,
                       onPressed: () {
@@ -137,6 +141,10 @@ class _ExampleAppState extends State<ExampleApp> {
         },
       ),
     );
+  }
+
+  void _addImage(String imageUrl) {
+    _queue.add(imageUrl);
   }
 
   /// Returns an icon based on the status of the item

@@ -1,7 +1,7 @@
 import 'dart:async';
 
+import 'package:easy_queue/extensions.dart';
 import 'package:easy_queue/src/callbacks/item_handler.dart';
-import 'package:easy_queue/src/extensions/queue_items_extension.dart';
 import 'package:easy_queue/src/models/queue_event.dart';
 import 'package:easy_queue/src/models/queue_item.dart';
 import 'package:easy_queue/src/models/queue_item_status.dart';
@@ -16,11 +16,20 @@ class EasyQueue<T> {
     _currentBatchId = const Uuid().v4();
   }
 
-  final List<QueueItem<T>> _items = [];
+  final _items = <QueueItem<T>>[];
   final _onUpdateStreamController =
       StreamController<QueueSnapshot<T>>.broadcast();
   late String _currentBatchId;
+  var _isStarted = false;
   var _isProcessing = false;
+
+  /// An internal stream controller is being used for tracking item processing events
+  /// to eliminate the chances of a user disposing the `onUpdate` [StreamController].
+  final _itemController = StreamController<QueueItem<T>>.broadcast(
+    sync: true,
+  );
+
+  StreamSubscription<QueueItem<T>>? _itemSubscription;
 
   /// The number of times to retry processing an item before marking it as failed.
   final int retryCount;
@@ -33,6 +42,8 @@ class EasyQueue<T> {
 
   /// Whether the queue is currently processing items.
   bool get isProcessing => _isProcessing;
+
+  bool get isStarted => _isStarted;
 
   /// The items in the current queue.
   Iterable<QueueItem<T>> get currentBatchItems => items(_currentBatchId);
@@ -48,48 +59,40 @@ class EasyQueue<T> {
   /// Starts the queue.
   /// If the queue is already running, this will do nothing.
   Future<void> start() async {
-    //TODO: when started, we need to detect when new items are added to the queue and process them immediately
-    //TODO: we should not stop the queue processing until the user explicitly stops it
-
-    if (_isProcessing) return;
-    if (_items.isEmpty) return;
-    if (_items.pending.isEmpty) return;
-    _isProcessing = true;
+    if (_isStarted) return;
+    _isStarted = true;
     _sendOnUpdateEvent(QueueEvent.started, null);
-    try {
-      await _processQueueItems();
-    } finally {
-      _sendOnUpdateEvent(QueueEvent.stopped, null);
-      _currentBatchId = const Uuid().v4();
-      _isProcessing = false;
-    }
+    _processQueueItemsOnDemand();
   }
 
   /// Stops the queue from processing any more items.
   /// If the queue is currently processing an item, it will finish processing that item before stopping.
   void stop() {
-    if (!_isProcessing) return;
-    _isProcessing = false;
+    if (!_isStarted) return;
+    _isStarted = false;
     _sendOnUpdateEvent(QueueEvent.stopped, null);
+    _itemSubscription?.cancel();
   }
 
   /// Adds an item to the queue.
   void add(T data) {
-    _items.add(
-      QueueItem(
-        data: data,
-        queuedAt: DateTime.now(),
-        status: QueueItemStatus.pending,
-        batchId: _currentBatchId,
-      ),
+    /// if the queue is empty, assign a new batch id
+    if (_items.isEmpty) _currentBatchId = const Uuid().v4();
+
+    final item = QueueItem(
+      data: data,
+      queuedAt: DateTime.now(),
+      status: QueueItemStatus.pending,
+      batchId: _currentBatchId,
     );
+    _items.add(item);
     _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, null);
+    _itemController.add(item);
   }
 
   /// Clears a single item in the queue.
   /// If the item is currently being processed, this will throw a [StateError].
   void clear(QueueItem<T> item) {
-    if (isProcessing) throw StateError('Cannot clear queue while processing');
     final itemCopy = item.copyWith()..status = QueueItemStatus.cleared;
     _items.remove(item);
     _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, itemCopy);
@@ -98,7 +101,6 @@ class EasyQueue<T> {
   /// Clears all items in the queue.
   /// If any items are currently being processed, this will throw a [StateError].
   void clearAll() {
-    if (isProcessing) throw StateError('Cannot clear queue while processing');
     _items.clear();
     _sendOnUpdateEvent(QueueEvent.clearAll, null);
   }
@@ -128,17 +130,27 @@ class EasyQueue<T> {
   void dispose() {
     stop();
     _onUpdateStreamController.close();
+    _itemController.close();
   }
 
   //////// INTERNALS ////////
 
-  /// Processes all items in the queue.
-  Future<void> _processQueueItems() async {
-    int i = 0;
-    while (i < _items.length) {
-      if (!isProcessing) return;
-      await _processQueueItem(_items[i]);
-      i++;
+  /// Processes the queue items as they become available.
+  void _processQueueItemsOnDemand() async {
+    Future<void> lastItemProcessed =
+        Future.value(); // Start with a completed Future
+
+    _itemSubscription = _itemController.stream.listen((event) {
+      _isProcessing = true;
+      lastItemProcessed =
+          lastItemProcessed.then((_) => _processQueueItem(event));
+    }, onDone: () {
+      _isProcessing = false;
+    });
+
+    /// add all existing items to the stream controller so they get processed
+    for (final item in _items.pending) {
+      _itemController.add(item);
     }
   }
 
@@ -200,7 +212,8 @@ class EasyQueue<T> {
     _onUpdateStreamController.add(
       QueueSnapshot(
         event: event,
-        isRunning: _isProcessing,
+        isStarted: _isStarted,
+        isProcessing: isProcessing,
         currentBatchId: _currentBatchId,
         updatedItem: item?.copyWith(),
         items: currentBatchItems.map((e) => e.copyWith()).toList(),
