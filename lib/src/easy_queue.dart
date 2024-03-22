@@ -64,7 +64,7 @@ class EasyQueue<T> {
 
   /// Starts the queue.
   /// If the queue is already running, this will do nothing.
-  Future<void> start() async {
+  void start() async {
     if (_isStarted) return;
     _isStarted = true;
     _sendOnUpdateEvent(QueueEvent.started, null);
