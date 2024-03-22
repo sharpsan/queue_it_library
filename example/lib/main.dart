@@ -20,16 +20,16 @@ class _ExampleAppState extends State<ExampleApp> {
   final _queue = EasyQueue<String>(
     concurrentOperations: 1,
     retryCount: 3,
+    itemHandler: (item) async {
+      log('Processing item: $item');
+      await Future.delayed(const Duration(seconds: 1));
+    },
   );
   final _faker = Faker();
   StreamSubscription<QueueSnapshot<String>>? _subscription;
 
   @override
   void initState() {
-    _queue.itemHandler = (item) async {
-      log('Processing item: $item');
-      await Future.delayed(const Duration(seconds: 1));
-    };
     _subscription = _queue.onUpdate.listen((event) {
       log('Queue updated: $event');
     });
