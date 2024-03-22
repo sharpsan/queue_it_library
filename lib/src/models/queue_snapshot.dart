@@ -20,7 +20,7 @@ class QueueSnapshot<T> {
   /// The items in the queue.
   final List<QueueItem<T>> items;
 
-  QueueSnapshot({
+  const QueueSnapshot({
     required this.event,
     required this.isStarted,
     required this.isProcessing,

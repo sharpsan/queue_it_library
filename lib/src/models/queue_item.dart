@@ -1,5 +1,6 @@
 import 'package:easy_queue/src/models/queue_item_status.dart';
 
+//TODO: should this be an immutable object?  Will that improve performance?
 class QueueItem<T> {
   QueueItem({
     required this.data,

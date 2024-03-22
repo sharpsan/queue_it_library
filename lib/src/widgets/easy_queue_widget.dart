@@ -15,7 +15,7 @@ class EasyQueueWidget<T> extends StatefulWidget {
   final EasyQueue<T> queue;
 
   /// The builder function that will be called when the queue updates.
-  final Widget Function(BuildContext context) builder;
+  final Widget Function(BuildContext context, QueueSnapshot? snapshot) builder;
 
   @override
   State<EasyQueueWidget<T>> createState() => _EasyQueueWidgetState<T>();
@@ -23,11 +23,14 @@ class EasyQueueWidget<T> extends StatefulWidget {
 
 class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
   StreamSubscription<QueueSnapshot<T>>? _onUpdateSubscription;
+  QueueSnapshot? _lastSnapshot;
 
   @override
   void initState() {
     _onUpdateSubscription = widget.queue.onUpdate.listen((item) {
-      setState(() {});
+      setState(() {
+        _lastSnapshot = item;
+      });
     });
     super.initState();
   }
@@ -40,6 +43,6 @@ class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
 
   @override
   Widget build(BuildContext context) {
-    return widget.builder(context);
+    return widget.builder(context, _lastSnapshot);
   }
 }
