@@ -10,6 +10,7 @@ class QueueItem<T> {
     this.completedAt,
     this.failedAt,
     this.canceledAt,
+    this.clearedAt,
     this.retryCount = 0,
   });
 
@@ -21,6 +22,7 @@ class QueueItem<T> {
   DateTime? completedAt;
   DateTime? failedAt;
   DateTime? canceledAt;
+  DateTime? clearedAt;
   QueueItemStatus status;
   int retryCount;
 
@@ -32,6 +34,7 @@ class QueueItem<T> {
     DateTime? completedAt,
     DateTime? failedAt,
     DateTime? canceledAt,
+    DateTime? clearedAt,
     QueueItemStatus? status,
     int? retryCount,
   }) {
@@ -43,6 +46,7 @@ class QueueItem<T> {
       completedAt: completedAt ?? this.completedAt,
       failedAt: failedAt ?? this.failedAt,
       canceledAt: canceledAt ?? this.canceledAt,
+      clearedAt: clearedAt ?? this.clearedAt,
       status: status ?? this.status,
       retryCount: retryCount ?? this.retryCount,
     );

@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:easy_queue/easy_queue.dart';
+import 'package:easy_queue/src/models/queue_snapshot.dart';
 import 'package:flutter/widgets.dart';
 
-/// This widget calls the `builder` function whenever the queue is updated.
 class EasyQueueWidget<T> extends StatefulWidget {
   const EasyQueueWidget({
     super.key,
@@ -11,7 +11,10 @@ class EasyQueueWidget<T> extends StatefulWidget {
     required this.builder,
   });
 
+  /// The queue to listen to.
   final EasyQueue<T> queue;
+
+  /// The builder function that will be called when the queue updates.
   final Widget Function(BuildContext context) builder;
 
   @override
@@ -19,19 +22,11 @@ class EasyQueueWidget<T> extends StatefulWidget {
 }
 
 class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
-  StreamSubscription<String>? _onStartSubscription;
-  StreamSubscription<QueueItem<T>>? _onUpdateSubscription;
-  StreamSubscription<Iterable<QueueItem<T>>>? _onDoneSubscription;
+  StreamSubscription<QueueSnapshot<T>>? _onUpdateSubscription;
 
   @override
   void initState() {
-    _onStartSubscription = widget.queue.onStart.listen((batchId) {
-      setState(() {});
-    });
     _onUpdateSubscription = widget.queue.onUpdate.listen((item) {
-      setState(() {});
-    });
-    _onDoneSubscription = widget.queue.onDone.listen((items) {
       setState(() {});
     });
     super.initState();
@@ -39,9 +34,7 @@ class _EasyQueueWidgetState<T> extends State<EasyQueueWidget<T>> {
 
   @override
   void dispose() {
-    _onStartSubscription?.cancel();
     _onUpdateSubscription?.cancel();
-    _onDoneSubscription?.cancel();
     super.dispose();
   }
 
