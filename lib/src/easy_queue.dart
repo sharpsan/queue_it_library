@@ -20,7 +20,7 @@ class EasyQueue<T> {
 
   final _items = <QueueItem<T>>[];
   final _onUpdateStreamController =
-      StreamController<QueueSnapshot<T>>.broadcast();
+      StreamController<QueueSnapshot<T>>.broadcast(sync: true);
   late String _currentBatchId;
   late final _semaphore = Semaphore(concurrentOperations);
   var _isStarted = false;
@@ -28,7 +28,7 @@ class EasyQueue<T> {
 
   /// An internal stream controller is being used for tracking item processing events
   /// to eliminate the chances of a user disposing the `onUpdate` [StreamController].
-  final _itemController = StreamController<QueueItem<T>>.broadcast();
+  final _itemController = StreamController<QueueItem<T>>.broadcast(sync: false);
 
   StreamSubscription<QueueItem<T>>? _itemSubscription;
 
@@ -90,8 +90,8 @@ class EasyQueue<T> {
       batchId: _currentBatchId,
     );
     _items.add(item);
-    _sendOnUpdateEvent(QueueEvent.itemAdded, item.copyWith());
     _itemController.add(item);
+    _sendOnUpdateEvent(QueueEvent.itemAdded, item.copyWith());
   }
 
   /// Removes a single item in the queue.
