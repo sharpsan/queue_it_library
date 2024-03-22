@@ -17,9 +17,7 @@ class ExampleApp extends StatefulWidget {
 }
 
 class _ExampleAppState extends State<ExampleApp> {
-  final _queue = EasyQueue<String>(
-    concurrentOperations: 3,
-  );
+  final _queue = EasyQueue<String>();
   final _faker = Faker();
   StreamSubscription<QueueSnapshot<String>>? _subscription;
 
@@ -107,38 +105,53 @@ class _ExampleAppState extends State<ExampleApp> {
                 ],
               ),
             ),
-            body: items.isEmpty
-                ? const Center(child: Text('No items in queue'))
-                : ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 100),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items.toList()[index];
-                      return Dismissible(
-                        key: Key(item.data),
-                        onDismissed: (direction) {
-                          _queue.clear(item);
-                        },
-                        child: ListTile(
-                          leading: Image.network(item.data),
-                          title: Text(item.data),
-                          subtitle: Wrap(
-                            children: [
-                              if (item.queuedAt != null)
-                                Text('Added: ${item.queuedAt}'),
-                              if (item.startedProcessingAt != null)
-                                Text('Started: ${item.startedProcessingAt}'),
-                              if (item.completedAt != null)
-                                Text('Done: ${item.completedAt}'),
-                              if (item.failedAt != null)
-                                Text('Failed: ${item.failedAt}'),
-                            ],
-                          ),
-                          trailing: _iconFromStatus(item.status),
-                        ),
-                      );
-                    },
+            body: Column(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                /// Progress bar
+                if (_queue.items().processing.isNotEmpty)
+                  LinearProgressIndicator(
+                    value: _queue.items().progress,
                   ),
+
+                /// Queue list
+                Expanded(
+                  child: items.isEmpty
+                      ? const Center(child: Text('No items in queue'))
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 100),
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final item = items.toList()[index];
+                            return Dismissible(
+                              key: Key(item.data),
+                              onDismissed: (direction) {
+                                _queue.clear(item);
+                              },
+                              child: ListTile(
+                                leading: Image.network(item.data),
+                                title: Text(item.data),
+                                subtitle: Wrap(
+                                  children: [
+                                    if (item.queuedAt != null)
+                                      Text('Added: ${item.queuedAt}'),
+                                    if (item.startedProcessingAt != null)
+                                      Text(
+                                          'Started: ${item.startedProcessingAt}'),
+                                    if (item.completedAt != null)
+                                      Text('Done: ${item.completedAt}'),
+                                    if (item.failedAt != null)
+                                      Text('Failed: ${item.failedAt}'),
+                                  ],
+                                ),
+                                trailing: _iconFromStatus(item.status),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           );
         },
       ),
