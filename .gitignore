@@ -1,2 +1,6 @@
 
 .DS_Store
+pubspec_overrides.yaml
+
+.fvm/*
+!.fvm/fvm_config.json

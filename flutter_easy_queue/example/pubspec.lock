@@ -64,13 +64,6 @@ packages:
       relative: true
     source: path
     version: "1.0.0"
-  easy_queue_flutter:
-    dependency: "direct main"
-    description:
-      path: ".."
-      relative: true
-    source: path
-    version: "0.0.1"
   fake_async:
     dependency: transitive
     description:
@@ -100,6 +93,13 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_easy_queue:
+    dependency: "direct main"
+    description:
+      path: ".."
+      relative: true
+    source: path
+    version: "0.0.1"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -272,4 +272,3 @@ packages:
     version: "13.0.0"
 sdks:
   dart: ">=3.3.0 <4.0.0"
-  flutter: ">=1.17.0"

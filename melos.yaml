@@ -1,0 +1,13 @@
+name: easy_queue_library
+repository: https://github.com/sharpsan/easy_queue_library
+
+packages:
+  - easy_queue
+  - flutter_easy_queue
+  - flutter_easy_queue/example
+
+sdkPath: .fvm/flutter_sdk
+
+scripts:
+  analyze:
+    exec: dart analyze .

@@ -1,12 +1,11 @@
 name: easy_queue
 description: A starting point for Dart libraries or applications.
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/sharpsan/easy_queue_library/easy_queue
 
 environment:
-  sdk: ^3.3.0
+  sdk: ^3.0.2
 
-# Add regular dependencies here.
 dependencies:
   uuid: ^4.3.3
 
