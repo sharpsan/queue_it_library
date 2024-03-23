@@ -5,15 +5,9 @@ import 'package:uuid/uuid.dart';
 class QueueItem<T> {
   QueueItem({
     required this.data,
-    required this.status,
+    required QueueItemStatus status,
     required this.batchId,
     String? id,
-    this.queuedAt,
-    this.startedProcessingAt,
-    this.completedAt,
-    this.failedAt,
-    this.canceledAt,
-    this.clearedAt,
     this.retryCount = 0,
   }) : id = id ?? const Uuid().v4();
 
@@ -22,13 +16,49 @@ class QueueItem<T> {
   final T data;
   final String batchId;
 
-  DateTime? queuedAt;
-  DateTime? startedProcessingAt;
-  DateTime? completedAt;
-  DateTime? failedAt;
-  DateTime? canceledAt;
-  DateTime? clearedAt;
-  QueueItemStatus status;
+  DateTime? _queuedAt;
+  DateTime? _startedProcessingAt;
+  DateTime? _completedAt;
+  DateTime? _failedAt;
+  DateTime? _canceledAt;
+  DateTime? _removedAt;
+
+  QueueItemStatus _status = QueueItemStatus.pending;
+
+  QueueItemStatus get status => _status;
+
+  DateTime? get queuedAt => _queuedAt;
+
+  DateTime? get startedProcessingAt => _startedProcessingAt;
+
+  DateTime? get completedAt => _completedAt;
+
+  DateTime? get failedAt => _failedAt;
+
+  DateTime? get canceledAt => _canceledAt;
+
+  DateTime? get removedAt => _removedAt;
+
+  set status(QueueItemStatus value) {
+    if (value == _status) return;
+    final now = DateTime.now();
+    switch (value) {
+      case QueueItemStatus.processing:
+        _startedProcessingAt = now;
+      case QueueItemStatus.completed:
+        _completedAt = now;
+      case QueueItemStatus.failed:
+        _failedAt = now;
+      case QueueItemStatus.canceled:
+        _canceledAt = now;
+      case QueueItemStatus.removed:
+        _removedAt = now;
+      case QueueItemStatus.pending:
+        _queuedAt = now;
+    }
+    _status = value;
+  }
+
   int retryCount;
 
   QueueItem<T> copyWith({
@@ -40,7 +70,7 @@ class QueueItem<T> {
     DateTime? completedAt,
     DateTime? failedAt,
     DateTime? canceledAt,
-    DateTime? clearedAt,
+    DateTime? removedAt,
     QueueItemStatus? status,
     int? retryCount,
   }) {
@@ -48,14 +78,14 @@ class QueueItem<T> {
       id: id ?? this.id,
       data: data ?? this.data,
       batchId: batchId ?? this.batchId,
-      queuedAt: queuedAt ?? this.queuedAt,
-      startedProcessingAt: startedProcessingAt ?? this.startedProcessingAt,
-      completedAt: completedAt ?? this.completedAt,
-      failedAt: failedAt ?? this.failedAt,
-      canceledAt: canceledAt ?? this.canceledAt,
-      clearedAt: clearedAt ?? this.clearedAt,
       status: status ?? this.status,
       retryCount: retryCount ?? this.retryCount,
-    );
+    )
+      .._queuedAt = queuedAt ?? this.queuedAt
+      .._startedProcessingAt = startedProcessingAt ?? this.startedProcessingAt
+      .._completedAt = completedAt ?? this.completedAt
+      .._failedAt = failedAt ?? this.failedAt
+      .._canceledAt = canceledAt ?? this.canceledAt
+      .._removedAt = removedAt ?? this.removedAt;
   }
 }

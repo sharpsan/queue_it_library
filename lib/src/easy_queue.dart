@@ -62,7 +62,7 @@ class EasyQueue<T> {
 
   /// Starts the queue.
   /// If the queue is already running, this will do nothing.
-  /// 
+  ///
   /// [stopAutomatically] - Whether to stop the queue automatically after all items have been processed.
   void start({
     bool stopAutomatically = false,
@@ -89,7 +89,6 @@ class EasyQueue<T> {
 
     final item = QueueItem(
       data: data,
-      queuedAt: DateTime.now(),
       status: QueueItemStatus.pending,
       batchId: _currentBatchId,
     );
@@ -127,9 +126,7 @@ class EasyQueue<T> {
 
   void _cancel(QueueItem<T> item) {
     if (item.status == QueueItemStatus.completed) return;
-    _items[_items.indexOf(item)]
-      ..status = QueueItemStatus.canceled
-      ..canceledAt = DateTime.now();
+    _items[_items.indexOf(item)].status = QueueItemStatus.canceled;
   }
 
   /// Disposes of the [EasyQueue] instance.
@@ -142,7 +139,7 @@ class EasyQueue<T> {
   //////// INTERNALS ////////
 
   /// Processes the queue items as they become available.
-  /// 
+  ///
   /// [stopAutomatically] - Whether to stop the queue automatically after all items have been processed.
   void _processQueueItemsOnDemand({
     bool stopAutomatically = false,
@@ -189,19 +186,17 @@ class EasyQueue<T> {
   /// Handles a queued item by calling the [itemHandler] function.
   Future<void> _handleQueuedItem(QueueItem<T> item) async {
     try {
-      item
-        ..status = QueueItemStatus.processing
-        ..startedProcessingAt = DateTime.now();
+      item.status = QueueItemStatus.processing;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
-      await itemHandler?.call(item);
-      item
-        ..status = QueueItemStatus.completed
-        ..completedAt = DateTime.now();
+      final resultingStatus = await itemHandler.call(item);
+      if (resultingStatus == null) {
+        item.status = QueueItemStatus.completed;
+      } else {
+        item.status = resultingStatus;
+      }
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } catch (e) {
-      item
-        ..status = QueueItemStatus.failed
-        ..failedAt = DateTime.now();
+      item.status = QueueItemStatus.failed;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     }
   }
@@ -213,9 +208,7 @@ class EasyQueue<T> {
       item.retryCount++;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else {
-      item
-        ..status = QueueItemStatus.canceled
-        ..canceledAt = DateTime.now();
+      item.status = QueueItemStatus.canceled;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     }
   }
