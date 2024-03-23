@@ -14,10 +14,10 @@ class QueueSnapshot<T> {
   /// The current batch id.
   final String currentBatchId;
 
-  /// The item that was updated.
-  final QueueItem<T>? updatedItem;
+  /// The subject item of the event, if any.
+  final QueueItem<T>? eventItem;
 
-  /// The items in the queue.
+  /// The items in the queue at the time of the snapshot.
   final List<QueueItem<T>> items;
 
   const QueueSnapshot({
@@ -25,7 +25,7 @@ class QueueSnapshot<T> {
     required this.isStarted,
     required this.isProcessing,
     required this.currentBatchId,
-    required this.updatedItem,
+    required this.eventItem,
     required this.items,
   });
 }

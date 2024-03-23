@@ -39,6 +39,10 @@ class EasyQueue<T> {
   final int retryLimit;
 
   /// The function that will be called to process each item in the queue.
+  ///
+  /// By default the next item status will be set to [QueueItemStatus.completed] if the function
+  /// completes successfully, and [QueueItemStatus.failed] if the function throws an error.
+  /// You can override this behavior by setting the status of the item manually.
   final ItemHandler<T> itemHandler;
 
   /// The current batch id
@@ -47,6 +51,7 @@ class EasyQueue<T> {
   /// Whether the queue is currently processing items.
   bool get isProcessing => _isProcessing;
 
+  /// Whether the queue is currently started.
   bool get isStarted => _isStarted;
 
   /// The items in the current queue.
@@ -188,12 +193,15 @@ class EasyQueue<T> {
     try {
       item.status = QueueItemStatus.processing;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
-      final resultingStatus = await itemHandler.call(item);
-      if (resultingStatus == null) {
+      await itemHandler.call(item);
+
+      /// if the item was not manually updated, set it to completed
+      if (item.status == QueueItemStatus.processing) {
         item.status = QueueItemStatus.completed;
       } else {
-        item.status = resultingStatus;
+        item.status = item.status;
       }
+
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } catch (e) {
       item.status = QueueItemStatus.failed;
@@ -205,7 +213,6 @@ class EasyQueue<T> {
   void _handleFailedItem(QueueItem<T> item) {
     if (item.retryCount < retryLimit) {
       item.status = QueueItemStatus.pending;
-      item.retryCount++;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else {
       item.status = QueueItemStatus.canceled;
@@ -224,7 +231,7 @@ class EasyQueue<T> {
         isStarted: _isStarted,
         isProcessing: _isProcessing,
         currentBatchId: _currentBatchId,
-        updatedItem: item?.copyWith(),
+        eventItem: item?.copyWith(),
         items: currentBatchItems.map((e) => e.copyWith()).toList(),
       ),
     );

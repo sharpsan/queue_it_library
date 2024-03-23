@@ -8,23 +8,24 @@ class QueueItem<T> {
     required QueueItemStatus status,
     required this.batchId,
     String? id,
-    this.retryCount = 0,
   }) : id = id ?? const Uuid().v4();
 
+  /// The unique id of the item.
   final String id;
 
+  /// The data that the item represents.
   final T data;
+
+  /// The id of the batch that the item belongs to.
+  ///
+  /// This is used to group items together for processing and
+  /// is regenerated each time the queue completes all pending items.
   final String batchId;
 
-  DateTime? _queuedAt;
-  DateTime? _startedProcessingAt;
-  DateTime? _completedAt;
-  DateTime? _failedAt;
-  DateTime? _canceledAt;
-  DateTime? _removedAt;
+  /// The number of times the item has attempted to be processed.
+  int get retryCount => _retryCount;
 
-  QueueItemStatus _status = QueueItemStatus.pending;
-
+  /// The current status of the item.
   QueueItemStatus get status => _status;
 
   DateTime? get queuedAt => _queuedAt;
@@ -38,6 +39,17 @@ class QueueItem<T> {
   DateTime? get canceledAt => _canceledAt;
 
   DateTime? get removedAt => _removedAt;
+
+  QueueItemStatus _status = QueueItemStatus.pending;
+
+  int _retryCount = 0;
+
+  DateTime? _queuedAt;
+  DateTime? _startedProcessingAt;
+  DateTime? _completedAt;
+  DateTime? _failedAt;
+  DateTime? _canceledAt;
+  DateTime? _removedAt;
 
   set status(QueueItemStatus value) {
     if (value == _status) return;
@@ -55,11 +67,10 @@ class QueueItem<T> {
         _removedAt = now;
       case QueueItemStatus.pending:
         _queuedAt = now;
+        _retryCount++;
     }
     _status = value;
   }
-
-  int retryCount;
 
   QueueItem<T> copyWith({
     String? id,
@@ -79,8 +90,8 @@ class QueueItem<T> {
       data: data ?? this.data,
       batchId: batchId ?? this.batchId,
       status: status ?? this.status,
-      retryCount: retryCount ?? this.retryCount,
     )
+      .._retryCount = retryCount ?? this.retryCount
       .._queuedAt = queuedAt ?? this.queuedAt
       .._startedProcessingAt = startedProcessingAt ?? this.startedProcessingAt
       .._completedAt = completedAt ?? this.completedAt
