@@ -60,6 +60,13 @@ packages:
   easy_queue:
     dependency: "direct main"
     description:
+      path: "../../easy_queue"
+      relative: true
+    source: path
+    version: "1.0.0"
+  easy_queue_flutter:
+    dependency: "direct main"
+    description:
       path: ".."
       relative: true
     source: path

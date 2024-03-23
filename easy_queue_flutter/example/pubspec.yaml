@@ -37,6 +37,8 @@ dependencies:
   cupertino_icons: ^1.0.6
   easy_queue:
     path: ../../easy_queue
+  easy_queue_flutter:
+    path: ../../easy_queue_flutter
   faker: ^2.1.0
 
 

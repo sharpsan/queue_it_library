@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:easy_queue/easy_queue.dart';
+import 'package:easy_queue_flutter/easy_queue_flutter.dart';
 import 'package:faker/faker.dart';
 import 'package:flutter/material.dart';
 
