@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'dart:collection';
 
 class Semaphore {
@@ -22,9 +21,17 @@ class Semaphore {
 
   void release() {
     if (_queue.isNotEmpty) {
-      _queue.removeFirst().complete();
+      final item = _queue.removeFirst();
+      if (!item.isCompleted) item.complete();
     } else {
       _counter--;
+    }
+  }
+
+  void reset() {
+    _counter = 0;
+    for (final completer in _queue) {
+      if (!completer.isCompleted) completer.complete();
     }
   }
 }

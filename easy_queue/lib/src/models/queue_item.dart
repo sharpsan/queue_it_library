@@ -26,7 +26,7 @@ class QueueItem<T> {
   int get retryCount => _retryCount;
 
   /// The current status of the item.
-  QueueItemStatus get status => _status;
+  QueueItemStatus get status => _status ?? QueueItemStatus.pending;
 
   DateTime? get queuedAt => _queuedAt;
 
@@ -40,7 +40,7 @@ class QueueItem<T> {
 
   DateTime? get removedAt => _removedAt;
 
-  QueueItemStatus _status = QueueItemStatus.pending;
+  QueueItemStatus? _status;
 
   int _retryCount = 0;
 
@@ -91,6 +91,7 @@ class QueueItem<T> {
       batchId: batchId ?? this.batchId,
       status: status ?? this.status,
     )
+      ..status = status ?? this.status
       .._retryCount = retryCount ?? this.retryCount
       .._queuedAt = queuedAt ?? this.queuedAt
       .._startedProcessingAt = startedProcessingAt ?? this.startedProcessingAt

@@ -85,6 +85,7 @@ class EasyQueue<T> {
     _isStarted = false;
     _sendOnUpdateEvent(QueueEvent.stoppedQueue, null);
     _itemSubscription?.cancel();
+    _semaphore.reset();
   }
 
   /// Adds an item to the queue.
@@ -99,7 +100,7 @@ class EasyQueue<T> {
     );
     _items.add(item);
     _itemController.add(item);
-    _sendOnUpdateEvent(QueueEvent.itemAdded, item.copyWith());
+    _sendOnUpdateEvent(QueueEvent.itemAdded, item);
   }
 
   /// Removes a single item in the queue.
@@ -138,6 +139,7 @@ class EasyQueue<T> {
   void dispose() {
     stop();
     _onUpdateStreamController.close();
+    _itemSubscription?.cancel();
     _itemController.close();
   }
 
@@ -150,13 +152,15 @@ class EasyQueue<T> {
     bool stopAutomatically = false,
   }) async {
     _itemSubscription = _itemController.stream.listen((event) async {
+      await _semaphore.acquire();
+
+      if (!_isStarted) return;
+
       if (!_isProcessing) {
         _isProcessing = true;
         _sendOnUpdateEvent(QueueEvent.startedProcessing, null);
       }
-      await _semaphore.acquire();
       await _processQueueItem(event);
-      _semaphore.release();
 
       // Check if there are any more items in the queue
       if (_items.pending.isEmpty) {
@@ -164,6 +168,8 @@ class EasyQueue<T> {
         _sendOnUpdateEvent(QueueEvent.stoppedProcessing, null);
         if (stopAutomatically) stop();
       }
+
+      _semaphore.release();
     });
 
     /// add all existing items to the stream controller so they get processed

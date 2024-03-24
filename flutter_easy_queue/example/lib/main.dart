@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:easy_queue/easy_queue.dart';
-import 'package:flutter_easy_queue/flutter_easy_queue.dart';
 import 'package:faker/faker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easy_queue/flutter_easy_queue.dart';
 
 void main() {
   runApp(const ExampleApp());
@@ -32,7 +32,10 @@ class _ExampleAppState extends State<ExampleApp> {
   @override
   void initState() {
     _subscription = _queue.onUpdate.listen((event) {
-      log('Queue updated: $event');
+      log(
+        '${event.event.name}, item status/id: ${event.eventItem?.status.name} / ${event.eventItem?.id}',
+        name: 'EasyQueue',
+      );
     });
     super.initState();
   }
