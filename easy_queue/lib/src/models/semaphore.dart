@@ -29,9 +29,8 @@ class Semaphore {
   }
 
   void reset() {
-    _counter = 0;
-    for (final completer in _queue) {
-      if (!completer.isCompleted) completer.complete();
+    while (_queue.isNotEmpty) {
+      release();
     }
   }
 }
