@@ -8,8 +8,8 @@
 
 This is a monorepo containing the following packages:
 
-- [easy_queue](https://github.com/yourusername/easy_queue): Queue handling with concurrency support for Dart.
-- [flutter_easy_queue](https://github.com/yourusername/flutter_easy_queue): Provides the **EasyQueueWidget** widget for Flutter that rebuilds when the queue changes.
+- [easy_queue](https://github.com/sharpsan/easy_queue_library/tree/main/easy_queue): Queue handling with concurrency support for Dart.
+- [flutter_easy_queue](https://github.com/sharpsan/easy_queue_library/tree/main/flutter_easy_queue): Provides **EasyQueueWidget** that rebuilds when the queue changes.
 
 Please check out each project for more details and examples.
 
