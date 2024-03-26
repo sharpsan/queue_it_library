@@ -1,7 +1,7 @@
 name: queue_it
 description: QueueIt makes dealing with queues easy.
 version: 0.0.1
-repository: https://github.com/sharpsan/queue_it_library/queue_it
+repository: https://github.com/sharpsan/queue_it_library
 
 environment:
   sdk: ^3.0.2
