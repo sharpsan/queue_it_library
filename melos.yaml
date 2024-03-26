@@ -11,3 +11,9 @@ sdkPath: .fvm/flutter_sdk
 scripts:
   analyze:
     exec: dart analyze .
+
+  flutter_clean:
+    exec: flutter clean
+
+  flutter_pub_get:
+    exec: flutter pub get
