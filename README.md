@@ -1,15 +1,15 @@
-# easy_queue_library
+# queue_it_library
 
 [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos)
-![Pub Version](https://img.shields.io/pub/v/easy_queue?label=easy_queue)
-![Pub Version](https://img.shields.io/pub/v/flutter_easy_queue?label=flutter_easy_queue)
-[![codecov](https://codecov.io/gh/sharpsan/easy_queue_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/easy_queue_library)
+![Pub Version](https://img.shields.io/pub/v/queue_it?label=queue_it)
+![Pub Version](https://img.shields.io/pub/v/flutter_queue_it?label=flutter_queue_it)
+[![codecov](https://codecov.io/gh/sharpsan/queue_it_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/queue_it_library)
 
 
 This is a monorepo containing the following packages:
 
-- [easy_queue](https://github.com/sharpsan/easy_queue_library/tree/main/easy_queue): Queue handling with concurrency support for Dart.
-- [flutter_easy_queue](https://github.com/sharpsan/easy_queue_library/tree/main/flutter_easy_queue): Provides **EasyQueueWidget** that rebuilds when the queue changes.
+- [queue_it](https://github.com/sharpsan/queue_it_library/tree/main/queue_it): Queue handling with concurrency support for Dart.
+- [flutter_queue_it](https://github.com/sharpsan/queue_it_library/tree/main/flutter_queue_it): Provides **QueueItWidget** that rebuilds when the queue changes.
 
 Please check out each project for more details and examples.
 

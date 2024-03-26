@@ -1,10 +1,10 @@
-name: easy_queue_library
-repository: https://github.com/sharpsan/easy_queue_library
+name: queue_it_library
+repository: https://github.com/sharpsan/queue_it_library
 
 packages:
-  - easy_queue
-  - flutter_easy_queue
-  - flutter_easy_queue/example
+  - queue_it
+  - flutter_queue_it
+  - flutter_queue_it/example
 
 sdkPath: .fvm/flutter_sdk
 

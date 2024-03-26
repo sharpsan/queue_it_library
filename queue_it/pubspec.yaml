@@ -1,0 +1,14 @@
+name: queue_it
+description: A starting point for Dart libraries or applications.
+version: 1.0.0
+repository: https://github.com/sharpsan/queue_it_library/queue_it
+
+environment:
+  sdk: ^3.0.2
+
+dependencies:
+  uuid: ^4.3.3
+
+dev_dependencies:
+  lints: ^3.0.0
+  test: ^1.24.0

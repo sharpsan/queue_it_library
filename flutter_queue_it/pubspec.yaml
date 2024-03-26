@@ -1,0 +1,21 @@
+name: flutter_queue_it
+description: "A new Flutter package project."
+version: 0.0.1
+repository: https://github.com/sharpsan/queue_it_library/flutter_queue_it
+# homepage:
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  queue_it: ^0.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
