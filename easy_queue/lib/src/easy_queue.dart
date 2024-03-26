@@ -32,7 +32,7 @@ class EasyQueue<T> {
 
   StreamSubscription<QueueItem<T>>? _itemSubscription;
 
-  /// The number of concurrent operations that can be processed at once.
+  /// The number of tasks that can be processed at once.
   final int concurrentOperations;
 
   /// The number of times to retry processing an item before marking it as failed.
@@ -231,15 +231,17 @@ class EasyQueue<T> {
     QueueEvent event,
     QueueItem<T>? item,
   ) {
-    _onUpdateStreamController.add(
-      QueueSnapshot(
-        event: event,
-        isStarted: _isStarted,
-        isProcessing: _isProcessing,
-        currentBatchId: _currentBatchId,
-        eventItem: item?.copyWith(),
-        items: currentBatchItems.map((e) => e.copyWith()).toList(),
-      ),
-    );
+    if(_onUpdateStreamController.hasListener) {
+      _onUpdateStreamController.add(
+        QueueSnapshot(
+          event: event,
+          isStarted: _isStarted,
+          isProcessing: _isProcessing,
+          currentBatchId: _currentBatchId,
+          eventItem: item?.copyWith(),
+          items: currentBatchItems.map((e) => e.copyWith()).toList(),
+        ),
+      );
+    }
   }
 }
