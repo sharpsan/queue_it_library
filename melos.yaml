@@ -6,8 +6,6 @@ packages:
   - flutter_queue_it
   - flutter_queue_it/example
 
-sdkPath: .fvm/flutter_sdk
-
 scripts:
   analyze:
     exec: dart analyze .
