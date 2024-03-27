@@ -1,0 +1,14 @@
+name: example
+description: A sample command-line application.
+version: 1.0.0
+publish_to: "none"
+
+environment:
+  sdk: ^3.3.0
+
+dependencies:
+  queue_it:
+    path: ../
+
+dev_dependencies:
+  lints: ^3.0.0

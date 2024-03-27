@@ -4,7 +4,6 @@ repository: https://github.com/sharpsan/queue_it_library
 packages:
   - queue_it
   - flutter_queue_it
-  - flutter_queue_it/example
 
 scripts:
   analyze:
