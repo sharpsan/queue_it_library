@@ -19,8 +19,8 @@ class ExampleApp extends StatefulWidget {
 
 class _ExampleAppState extends State<ExampleApp> {
   final _queue = QueueIt<String>(
-    concurrentOperations: 1,
-    retryLimit: 3,
+    parallel: 1,
+    retries: 3,
     itemHandler: (item) async {
       log('Processing item: $item');
       await Future.delayed(const Duration(seconds: 1));

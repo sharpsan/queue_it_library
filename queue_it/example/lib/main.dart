@@ -2,8 +2,9 @@ import 'package:queue_it/queue_it.dart';
 
 void main() {
   final queue = QueueIt<int>(
-      concurrentOperations: 1,
-      retryLimit: 3,
+      parallel: 1,
+      retries: 3,
+      useFriendlyIds: true,
       itemHandler: (item) async {
         print('Handling item: ${item.id}');
 
@@ -11,7 +12,11 @@ void main() {
         await Future.delayed(Duration(seconds: 1));
       })
     ..onUpdate.listen((snapshot) {
-      print('Queue updated: ${snapshot.event.name}');
+      var message = 'Queue updated: ${snapshot.event.name}';
+      if (snapshot.eventItem != null) {
+        message += ' (${snapshot.eventItem!.id})';
+      }
+      print(message);
     });
 
   /// Add some items to the queue

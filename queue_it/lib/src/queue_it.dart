@@ -7,13 +7,15 @@ import 'package:queue_it/src/models/queue_item.dart';
 import 'package:queue_it/src/models/queue_item_status.dart';
 import 'package:queue_it/src/models/queue_snapshot.dart';
 import 'package:queue_it/src/models/semaphore.dart';
+import 'package:queue_it/src/utils/readable_uuid.dart';
 import 'package:uuid/uuid.dart';
 
 class QueueIt<T> {
   QueueIt({
     required this.itemHandler,
-    this.retryLimit = 3,
-    this.concurrentOperations = 1,
+    this.retries = 3,
+    this.parallel = 1,
+    this.useFriendlyIds = false,
   }) {
     _currentBatchId = const Uuid().v4();
   }
@@ -22,7 +24,7 @@ class QueueIt<T> {
   final _onUpdateStreamController =
       StreamController<QueueSnapshot<T>>.broadcast(sync: true);
   late String _currentBatchId;
-  late final _semaphore = Semaphore(concurrentOperations);
+  late final _semaphore = Semaphore(parallel);
   var _isStarted = false;
   var _isProcessing = false;
 
@@ -33,10 +35,13 @@ class QueueIt<T> {
   StreamSubscription<QueueItem<T>>? _itemSubscription;
 
   /// The number of tasks that can be processed at once.
-  final int concurrentOperations;
+  final int parallel;
 
   /// The number of times to retry processing an item before marking it as failed.
-  final int retryLimit;
+  final int retries;
+
+  /// Whether to use readable phrases as ids instead of UUIDs.
+  final bool useFriendlyIds;
 
   /// The function that will be called to process each item in the queue.
   ///
@@ -88,26 +93,55 @@ class QueueIt<T> {
     _semaphore.reset();
   }
 
-  /// Adds an item to the queue.
-  void add(T data) {
+  bool hasItem(QueueItem<T> item) => _items.contains(item);
+
+  bool hasItemById(String id) => _items.any((e) => e.id == id);
+
+  /// Adds an item to the queue and returns it's id
+  String add(T data) {
     /// if the queue is empty, assign a new batch id
     if (_items.isEmpty) _currentBatchId = const Uuid().v4();
+
+    /// use friendly ids if enabled
+    String? id;
+    if (useFriendlyIds) {
+      id = ReadableUuid().generateReadableUuid();
+      /// failsafe to prevent duplicates
+      if(hasItemById(id)) {
+        id = null;
+      }
+    }
 
     final item = QueueItem(
       data: data,
       status: QueueItemStatus.pending,
       batchId: _currentBatchId,
+      id: id,
     );
     _items.add(item);
     _itemController.add(item);
     _sendOnUpdateEvent(QueueEvent.itemAdded, item);
+    return item.id;
   }
 
   /// Removes a single item in the queue.
-  void remove(QueueItem<T> item) {
+  bool remove(QueueItem<T> item) {
     final itemCopy = item.copyWith()..status = QueueItemStatus.removed;
-    _items.remove(item);
-    _sendOnUpdateEvent(QueueEvent.itemRemoved, itemCopy);
+    bool didRemove = _items.remove(item);
+    if (didRemove) {
+      _sendOnUpdateEvent(QueueEvent.itemRemoved, itemCopy);
+    }
+    return didRemove;
+  }
+
+  /// Removes a single item in the queue by it's id.
+  bool removeById(String id) {
+    try {
+      final item = _items.firstWhere((e) => e.id == id);
+      return remove(item);
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Removes all items in the queue.
@@ -117,9 +151,21 @@ class QueueIt<T> {
   }
 
   /// Cancels a single item in the queue.
-  void cancel(QueueItem<T> item) {
-    _cancel(item);
-    _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+  bool cancel(QueueItem<T> item) {
+    final didCancel = _cancel(item);
+    if (didCancel) {
+      _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+    }
+    return didCancel;
+  }
+
+  /// Cancels a single item in the queue by it's id.
+  bool cancelById(String id) {
+    try {
+      return cancel(_items.firstWhere((e) => e.id == id));
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Cancels all items in the queue.
@@ -130,9 +176,10 @@ class QueueIt<T> {
     _sendOnUpdateEvent(QueueEvent.cancelledAll, null);
   }
 
-  void _cancel(QueueItem<T> item) {
-    if (item.status == QueueItemStatus.completed) return;
-    _items[_items.indexOf(item)].status = QueueItemStatus.canceled;
+  bool _cancel(QueueItem<T> item) {
+    if (item.status == QueueItemStatus.completed) return false;
+    item.status = QueueItemStatus.canceled;
+    return true;
   }
 
   /// Disposes of the [QueueIt] instance.
@@ -217,7 +264,7 @@ class QueueIt<T> {
 
   /// Handles a failed item by either retrying it or marking it as failed.
   void _handleFailedItem(QueueItem<T> item) {
-    if (item.retryCount < retryLimit) {
+    if (item.retryCount < retries) {
       item.status = QueueItemStatus.pending;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else {
