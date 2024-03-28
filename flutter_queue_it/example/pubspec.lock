@@ -92,7 +92,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.0.2"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -168,7 +168,7 @@ packages:
       path: "../../queue_it"
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.0.2"
   sky_engine:
     dependency: transitive
     description: flutter
