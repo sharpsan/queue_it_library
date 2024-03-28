@@ -7,11 +7,10 @@ class ReadableUuid {
 
   final _random = Random();
 
-
   /// Generates a readable UUID using a combination of words and phrases.
-  /// 
+  ///
   /// 0.11574074% chance of generating the same readable uuid
-  /// 
+  ///
   /// ((6 + 6) * 6 * 6) * 2 = 864
   /// 1 / 864 = 0.0011574074
   String generateReadableUuid() {

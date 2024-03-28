@@ -106,8 +106,9 @@ class QueueIt<T> {
     String? id;
     if (useFriendlyIds) {
       id = ReadableUuid().generateReadableUuid();
+
       /// failsafe to prevent duplicates
-      if(hasItemById(id)) {
+      if (hasItemById(id)) {
         id = null;
       }
     }
