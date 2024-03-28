@@ -1,5 +1,5 @@
 name: queue_it
-description: QueueIt makes dealing with queues easy.
+description: QueueIt makes dealing with queues easy.  You can add multiple listeners, specify the number of concurrent items to process, view queue progress and more.
 version: 0.0.2
 repository: https://github.com/sharpsan/queue_it_library
 
