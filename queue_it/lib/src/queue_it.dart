@@ -98,13 +98,13 @@ class QueueIt<T> {
   bool hasItemById(String id) => _items.any((e) => e.id == id);
 
   /// Adds an item to the queue and returns it's id
-  String add(T data) {
+  String add(T data, {String? id}) {
     /// if the queue is empty, assign a new batch id
     if (_items.isEmpty) _currentBatchId = const Uuid().v4();
 
     /// use friendly ids if enabled
-    String? id;
-    if (useFriendlyIds) {
+
+    if (id == null && useFriendlyIds) {
       id = ReadableUuid().generateReadableUuid();
 
       /// failsafe to prevent duplicates
