@@ -59,6 +59,10 @@ class QueueIt<T> {
   /// Whether the queue is currently started.
   bool get isStarted => _isStarted;
 
+  /// A future that completes when the queue stops running.
+  Future<void> get running => _running?.future ?? Future.value();
+  Completer<void>? _running;
+
   /// The items in the current queue.
   Iterable<QueueItem<T>> get currentBatchItems => items(_currentBatchId);
 
@@ -79,6 +83,7 @@ class QueueIt<T> {
   }) async {
     if (_isStarted) return;
     _isStarted = true;
+    _running = Completer<void>();
     _sendOnUpdateEvent(QueueEvent.startedQueue, null);
     _processQueueItemsOnDemand(stopAutomatically: stopAutomatically);
   }
@@ -88,6 +93,7 @@ class QueueIt<T> {
   void stop() {
     if (!_isStarted) return;
     _isStarted = false;
+    _running?.complete();
     _sendOnUpdateEvent(QueueEvent.stoppedQueue, null);
     _itemSubscription?.cancel();
     _semaphore.reset();
