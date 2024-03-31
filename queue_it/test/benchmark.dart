@@ -18,6 +18,9 @@ class QueueItBenchmark extends BenchmarkBase {
     }
   }
 
+  @override
+  void exercise() => run();
+
   // Not measured setup code executed prior to the benchmark runs.
   @override
   void setup() {
