@@ -12,11 +12,11 @@ void main() {
         await Future.delayed(Duration(seconds: 1));
       })
     ..onUpdate.listen((snapshot) {
-      var message = 'Queue updated: ${snapshot.event.name}';
       if (snapshot.eventItem != null) {
-        message += ' (${snapshot.eventItem!.id})';
+        print(snapshot.eventItem!.summaryTableLine);
+      } else {
+        print(snapshot.event.name);
       }
-      print(message);
     });
 
   /// Add some items to the queue

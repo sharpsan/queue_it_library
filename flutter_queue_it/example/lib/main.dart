@@ -39,11 +39,14 @@ class _ExampleAppState extends State<ExampleApp> {
 
   @override
   void initState() {
-    _subscription = _queue.onUpdate.listen((event) {
-      log(
-        '${event.event.name}, item status/id: ${event.eventItem?.status.name} / ${event.eventItem?.id}',
-        name: 'QueueIt',
-      );
+    _subscription = _queue.onUpdate.listen((snapshot) {
+      String message;
+      if (snapshot.eventItem != null) {
+        message = snapshot.eventItem!.summaryTableLine;
+      } else {
+        message = snapshot.event.name;
+      }
+      log(message, name: 'QueueIt');
     });
     super.initState();
   }
