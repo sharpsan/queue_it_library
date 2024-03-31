@@ -13,10 +13,10 @@ import 'package:uuid/uuid.dart';
 class QueueIt<T> {
   QueueIt({
     required this.itemHandler,
-    this.retries = 3,
+    this.retries = 0,
     this.parallel = 1,
     this.useFriendlyIds = false,
-  }) {
+  }) : assert(parallel > 0, 'Parallel must be greater than 0') {
     _currentBatchId = const Uuid().v4();
   }
 
