@@ -47,7 +47,7 @@ class QueueIt<T> {
   ///
   /// By default the next item status will be set to [QueueItemStatus.completed] if the function
   /// completes successfully, and [QueueItemStatus.failed] if the function throws an error.
-  /// You can override this behavior by setting the status of the item manually.
+  /// You can override this behavior by setting `nextStatus` of the item manually.
   final ItemHandler<T> itemHandler;
 
   /// The current batch id
@@ -74,16 +74,29 @@ class QueueIt<T> {
   /// A snapshot of the current state of the queue.
   Stream<QueueSnapshot<T>> get onUpdate => _onUpdateStreamController.stream;
 
+  /// The last time the queue was started.
+  DateTime? _lastStartedAt;
+
+  /// The last time the queue was started processing.
+  DateTime? _lastStartedProcessingAt;
+
+  /// The last time the queue was stopped processing.
+  DateTime? _lastStoppedProcessingAt;
+
+  /// The last time the queue was stopped.
+  DateTime? _lastStoppedAt;
+
   /// Starts the queue.
   /// If the queue is already running, this will do nothing.
   ///
   /// [stopAutomatically] - Whether to stop the queue automatically after all items have been processed.
   void start({
-    bool stopAutomatically = false,
+    bool stopAutomatically = true,
   }) async {
     if (_isStarted) return;
     _isStarted = true;
     _running = Completer<void>();
+    _lastStartedAt = DateTime.now();
     _sendOnUpdateEvent(QueueEvent.startedQueue, null);
     _processQueueItemsOnDemand(stopAutomatically: stopAutomatically);
   }
@@ -94,6 +107,7 @@ class QueueIt<T> {
     if (!_isStarted) return;
     _isStarted = false;
     _running?.complete();
+    _lastStoppedAt = DateTime.now();
     _sendOnUpdateEvent(QueueEvent.stoppedQueue, null);
     _itemSubscription?.cancel();
     _semaphore.reset();
@@ -197,6 +211,20 @@ class QueueIt<T> {
     _itemController.close();
   }
 
+  @override
+  String toString() {
+    final s = StringBuffer();
+    s.writeln('Started: $_isStarted');
+    s.writeln('Processing: $_isProcessing');
+    s.writeln('Current Batch Id: $_currentBatchId');
+    s.writeln('Items: ${_items.map((e) => e.data).toList()}');
+    s.writeln('Started At: $_lastStartedAt');
+    s.writeln('Started Processing At: $_lastStartedProcessingAt');
+    s.writeln('Stopped Processing At: $_lastStoppedProcessingAt');
+    s.writeln('Stopped At: $_lastStoppedAt');
+    return s.toString();
+  }
+
   //////// INTERNALS ////////
 
   /// Processes the queue items as they become available.
@@ -212,13 +240,17 @@ class QueueIt<T> {
 
       if (!_isProcessing) {
         _isProcessing = true;
+        _lastStartedProcessingAt = DateTime.now();
         _sendOnUpdateEvent(QueueEvent.startedProcessing, null);
       }
       await _processQueueItem(event);
 
       // Check if there are any more items in the queue
-      if (_items.pending.isEmpty) {
+      if (_items.pending.isEmpty &&
+          _items.processing.isEmpty &&
+          _items.failed.isEmpty) {
         _isProcessing = false;
+        _lastStoppedProcessingAt = DateTime.now();
         _sendOnUpdateEvent(QueueEvent.stoppedProcessing, null);
         if (stopAutomatically) stop();
       }
@@ -232,7 +264,7 @@ class QueueIt<T> {
     }
   }
 
-  /// Processes a single item in the queue.
+  /// Processes a single item in the queue based on it's current status.
   Future<void> _processQueueItem(QueueItem<T> item) async {
     /// handle the item based on it's status
     switch (item.status) {
@@ -242,38 +274,56 @@ class QueueIt<T> {
       case QueueItemStatus.removed:
         break;
       case QueueItemStatus.pending:
-        await _handleQueuedItem(item);
+        await _handlePendingItem(item);
       case QueueItemStatus.failed:
-        _handleFailedItem(item);
+        await _handleFailedItem(item);
+    }
+  }
+
+  /// Processes a single item in the queue based on it's next status.
+  Future<void> _processQueueItemNextStatus(QueueItem<T> item) async {
+    if (item.nextStatus == null) return;
+    item
+      ..status = item.nextStatus!
+      ..nextStatus = null;
+    _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+    switch (item.status) {
+      case QueueItemStatus.processing:
+      case QueueItemStatus.completed:
+        break;
+      case QueueItemStatus.pending:
+        await _handlePendingItem(item);
+      case QueueItemStatus.failed:
+        await _handleFailedItem(item);
+      case QueueItemStatus.canceled:
+        cancel(item);
+      case QueueItemStatus.removed:
+        remove(item);
     }
   }
 
   /// Handles a queued item by calling the [itemHandler] function.
-  Future<void> _handleQueuedItem(QueueItem<T> item) async {
+  Future<void> _handlePendingItem(QueueItem<T> item) async {
     try {
       item.status = QueueItemStatus.processing;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       await itemHandler.call(item);
 
-      /// if the item was not manually updated, set it to completed
-      if (item.status == QueueItemStatus.processing) {
-        item.status = QueueItemStatus.completed;
-      } else {
-        item.status = item.status;
-      }
-
-      _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+      /// if the item's next status was not set, set it to completed
+      item.nextStatus ??= QueueItemStatus.completed;
+      await _processQueueItemNextStatus(item);
     } catch (e) {
-      item.status = QueueItemStatus.failed;
-      _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+      item.nextStatus = QueueItemStatus.failed;
+      await _processQueueItemNextStatus(item);
     }
   }
 
   /// Handles a failed item by either retrying it or marking it as failed.
-  void _handleFailedItem(QueueItem<T> item) {
+  Future<void> _handleFailedItem(QueueItem<T> item) async {
     if (item.retryCount < retries) {
       item.status = QueueItemStatus.pending;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+      await _handlePendingItem(item);
     } else {
       item.status = QueueItemStatus.canceled;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
@@ -289,11 +339,16 @@ class QueueIt<T> {
       _onUpdateStreamController.add(
         QueueSnapshot(
           event: event,
+          retries: retries,
           isStarted: _isStarted,
           isProcessing: _isProcessing,
           currentBatchId: _currentBatchId,
           eventItem: item?.copyWith(),
           items: currentBatchItems.map((e) => e.copyWith()).toList(),
+          startedAt: _lastStartedAt,
+          startedProcessingAt: _lastStartedProcessingAt,
+          stoppedProcessingAt: _lastStoppedProcessingAt,
+          stoppedAt: _lastStoppedAt,
         ),
       );
     }

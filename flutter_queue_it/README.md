@@ -12,9 +12,22 @@ rebuilds on changes.
 ### Example
 
 ```dart
-///TODO: add code example
+QueueItWidget(
+  queue: _queue,
+  builder: (context, snapshot) {
+    /// `builder` will be called each time the queue updates
+    final items = _queue.items().toList();
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return ListTile(
+          title: Text('Item status: ${item.status.name}'),
+        );
+      },
+    );
+  },
+);
 ```
 
-### QueueItWidget
-
-TODO: add basic widget documentation
+For a more in-depth example, check out the example project.

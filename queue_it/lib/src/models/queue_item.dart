@@ -8,7 +8,9 @@ class QueueItem<T> {
     required QueueItemStatus status,
     required this.batchId,
     String? id,
-  }) : id = id ?? const Uuid().v4();
+  }) : id = id ?? const Uuid().v4() {
+    this.status = status;
+  }
 
   /// The unique id of the item.
   final String id;
@@ -23,10 +25,13 @@ class QueueItem<T> {
   final String batchId;
 
   /// The number of times the item has attempted to be processed.
-  int get retryCount => _retryCount;
+  int get retryCount => _retryCount ?? 0;
 
   /// The current status of the item.
-  QueueItemStatus get status => _status ?? QueueItemStatus.pending;
+  QueueItemStatus get status => _status!;
+
+  /// The next status that the item should transition to.
+  QueueItemStatus? nextStatus;
 
   DateTime? get queuedAt => _queuedAt;
 
@@ -42,7 +47,7 @@ class QueueItem<T> {
 
   QueueItemStatus? _status;
 
-  int _retryCount = 0;
+  int? _retryCount;
 
   DateTime? _queuedAt;
   DateTime? _startedProcessingAt;
@@ -67,9 +72,40 @@ class QueueItem<T> {
         _removedAt = now;
       case QueueItemStatus.pending:
         _queuedAt = now;
-        _retryCount++;
+        if (_retryCount == null) {
+          _retryCount = 0;
+        } else {
+          _retryCount = _retryCount! + 1;
+        }
     }
     _status = value;
+  }
+
+  @override
+  String toString() {
+    final s = StringBuffer();
+    s.writeln('Id: $id');
+    s.writeln('Data: $data');
+    s.writeln('Batch Id: $batchId');
+    s.writeln('Status: $status');
+    s.writeln('Queued At: $queuedAt');
+    s.writeln('Started Processing At: $startedProcessingAt');
+    s.writeln('Completed At: $completedAt');
+    s.writeln('Failed At: $failedAt');
+    s.writeln('Canceled At: $canceledAt');
+    s.writeln('Removed At: $removedAt');
+    return s.toString();
+  }
+
+  String get summaryTableLine {
+    final s = StringBuffer();
+    s.write(status.name.padRight(15));
+    s.write(' | ');
+    s.write(data.toString().padRight(22));
+    s.write(' | ');
+    s.write(id.toString().padRight(22));
+
+    return s.toString();
   }
 
   QueueItem<T> copyWith({

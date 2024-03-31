@@ -2,7 +2,7 @@ import 'package:queue_it/queue_it.dart';
 
 void main() {
   final queue = QueueIt<int>(
-      parallel: 1,
+      parallel: 3,
       retries: 3,
       useFriendlyIds: true,
       itemHandler: (item) async {

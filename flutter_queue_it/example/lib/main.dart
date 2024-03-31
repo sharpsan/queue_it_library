@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:math' as math;
 
 import 'package:queue_it/queue_it.dart';
 import 'package:faker/faker.dart';
@@ -19,11 +20,18 @@ class ExampleApp extends StatefulWidget {
 
 class _ExampleAppState extends State<ExampleApp> {
   final _queue = QueueIt<String>(
-    parallel: 1,
+    parallel: 3,
     retries: 3,
+    useFriendlyIds: true,
     itemHandler: (item) async {
       log('Processing item: $item');
-      await Future.delayed(const Duration(seconds: 1));
+
+      /// generate a duration between 0.5 and 2 seconds
+      final duration = Duration(
+        milliseconds: (500 + (math.Random().nextInt(1500))).toInt(),
+      );
+
+      await Future.delayed(duration);
     },
   );
   final _faker = Faker();

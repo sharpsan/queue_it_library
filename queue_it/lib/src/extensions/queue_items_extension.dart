@@ -28,12 +28,15 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
     return double.parse(percentage.toStringAsFixed(2));
   }
 
-  String summary() {
-    return 'QueueItems: '
-        'Pending: ${pending.length}, '
-        'Processing: ${processing.length}, '
-        'Completed: ${completed.length}, '
-        'Failed: ${failed.length}, '
-        'Cancelled: ${cancelled.length}';
+  String get summary {
+    final s = StringBuffer();
+    s.writeln('Total: $length');
+    s.writeln('Pending: ${pending.length}');
+    s.writeln('Processing: ${processing.length}');
+    s.writeln('Completed: ${completed.length}');
+    s.writeln('Failed: ${failed.length}');
+    s.writeln('Cancelled: ${cancelled.length}');
+    s.writeln('Progress: ${progress * 100}%');
+    return s.toString();
   }
 }
