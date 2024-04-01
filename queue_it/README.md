@@ -28,7 +28,7 @@ applications.
 
 ## Usage
 
-Here's a basic example of how to use Easy Queue:
+Here's a basic example of how to use QueueIt:
 
 ```dart
 import 'package:queue_it/queue_it.dart';
