@@ -28,7 +28,7 @@ applications.
 
 ## Usage
 
-Here's a basic example of how to use Easy Queue:
+Here's a basic example of how to use QueueIt:
 
 ```dart
 import 'package:queue_it/queue_it.dart';
@@ -58,6 +58,26 @@ void main() {
   queue.add(4);
   queue.add(5);
 }
+```
+
+For Flutter projects you will want to use [flutter_queue_it](https://website-name.com), which listens to queue changes and rebuilds your widget tree:
+```dart
+QueueItWidget(
+  queue: _queue,
+  builder: (context, snapshot) {
+    /// `builder` will be called each time the queue updates
+    final items = _queue.items().toList();
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return ListTile(
+          title: Text('Item status: ${item.status.name}'),
+        );
+      },
+    );
+  },
+);
 ```
 
 For a more in-depth look at how to use QueueIt, check out the example project.

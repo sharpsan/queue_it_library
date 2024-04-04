@@ -33,27 +33,22 @@ class _ExampleAppState extends State<ExampleApp> {
 
       await Future.delayed(duration);
     },
-  );
+  )..onUpdate.listen(
+      (snapshot) {
+        String message;
+        if (snapshot.eventItem != null) {
+          message = snapshot.eventItem!.summaryTableLine;
+        } else {
+          message = snapshot.event.name;
+        }
+        log(message, name: 'QueueIt');
+      },
+    );
   final _faker = Faker();
-  StreamSubscription<QueueSnapshot<String>>? _subscription;
-
-  @override
-  void initState() {
-    _subscription = _queue.onUpdate.listen((snapshot) {
-      String message;
-      if (snapshot.eventItem != null) {
-        message = snapshot.eventItem!.summaryTableLine;
-      } else {
-        message = snapshot.event.name;
-      }
-      log(message, name: 'QueueIt');
-    });
-    super.initState();
-  }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _queue.dispose();
     super.dispose();
   }
 

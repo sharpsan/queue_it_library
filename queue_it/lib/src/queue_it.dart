@@ -13,10 +13,11 @@ import 'package:uuid/uuid.dart';
 class QueueIt<T> {
   QueueIt({
     required this.itemHandler,
-    this.retries = 3,
+    this.retries = 0,
     this.parallel = 1,
     this.useFriendlyIds = false,
-  }) {
+    this.deepCopyItemsInSnapshot = false,
+  }) : assert(parallel > 0, 'Parallel must be greater than 0') {
     _currentBatchId = const Uuid().v4();
   }
 
@@ -42,6 +43,9 @@ class QueueIt<T> {
 
   /// Whether to use readable phrases as ids instead of UUIDs.
   final bool useFriendlyIds;
+
+  /// Whether to deep copy items in the snapshot.  Enabling this has a performance cost.
+  final bool deepCopyItemsInSnapshot;
 
   /// The function that will be called to process each item in the queue.
   ///
@@ -344,7 +348,9 @@ class QueueIt<T> {
           isProcessing: _isProcessing,
           currentBatchId: _currentBatchId,
           eventItem: item?.copyWith(),
-          items: currentBatchItems.map((e) => e.copyWith()).toList(),
+          items: deepCopyItemsInSnapshot
+              ? currentBatchItems.map((e) => e.copyWith()).toList()
+              : currentBatchItems,
           startedAt: _lastStartedAt,
           startedProcessingAt: _lastStartedProcessingAt,
           stoppedProcessingAt: _lastStoppedProcessingAt,

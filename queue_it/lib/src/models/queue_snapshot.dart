@@ -21,7 +21,7 @@ class QueueSnapshot<T> {
   final QueueItem<T>? eventItem;
 
   /// The items in the queue at the time of the snapshot.
-  final List<QueueItem<T>> items;
+  final Iterable<QueueItem<T>> items;
 
   /// The time the queue was started.
   final DateTime? startedAt;

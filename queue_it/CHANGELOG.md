@@ -1,8 +1,11 @@
+## 0.0.4
+
+* Improve: disable deep-copying items in snapshots by default, greatly improving performance.  This can be controlled by setting `deepCopyItemsInSnapshot`.
 ## 0.0.3
 
-* Fix: Improve order of operations when using parallel processing
-* Fix: Retries
-* Add: Queue date fields
+* Fix: improve order of operations when using parallel processing
+* Fix: retries
+* Add: queue date fields
 * Add: toString() summaries for queue, snapshot, and item
 
 ## 0.0.2
