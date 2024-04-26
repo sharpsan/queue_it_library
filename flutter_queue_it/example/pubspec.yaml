@@ -1,4 +1,4 @@
-name: example
+name: flutter_queue_it_example
 description: "A new Flutter project."
 publish_to: "none"
 
@@ -10,10 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  queue_it:
-    path: ../
-  flutter_queue_it:
-    path: ../
+  queue_it: any
+  flutter_queue_it: any
   faker: ^2.1.0
 
 dev_dependencies:

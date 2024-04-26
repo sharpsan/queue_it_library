@@ -2,6 +2,6 @@ name: melos_root
 publish_to: none
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 dev_dependencies:
-  melos: ^5.2.1
+  melos: ^5.2.2

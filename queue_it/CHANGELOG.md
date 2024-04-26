@@ -1,3 +1,6 @@
+## 0.0.4
+
+* Improve: disable deep-copying items in snapshots by default, greatly improving performance.  This can be controlled by setting `deepCopyItemsInSnapshot`.
 ## 0.0.3
 
 * Fix: improve order of operations when using parallel processing
