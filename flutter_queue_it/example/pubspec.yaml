@@ -17,7 +17,13 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
+  flutter_lints: ^4.0.0
+
+dependency_overrides:
+  flutter_queue_it:
+    path: ../
+  queue_it:
+    path: ../../queue_it
 
 flutter:
   uses-material-design: true

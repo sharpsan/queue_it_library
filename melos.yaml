@@ -5,6 +5,9 @@ packages:
   - queue_it
   - flutter_queue_it
 
+ignore:
+  - "**/example"
+
 scripts:
   analyze:
     exec: dart analyze .
