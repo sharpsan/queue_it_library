@@ -9,5 +9,9 @@ environment:
 dependencies:
   queue_it: any
 
+dependency_overrides:
+  queue_it:
+    path: ../
+
 dev_dependencies:
-  lints: ^3.0.0
+  lints: ^4.0.0

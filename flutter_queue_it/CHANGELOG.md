@@ -1,3 +1,7 @@
+## 0.9.0
+
+* Fix dependency constraints
+
 ## 0.0.4
 
 * Updated example project

@@ -5,12 +5,26 @@ packages:
   - queue_it
   - flutter_queue_it
 
+ignore:
+  - "**/example"
+
 scripts:
   analyze:
     exec: dart analyze .
 
-  flutter_clean:
+  clean:
     exec: flutter clean
 
-  flutter_pub_get:
+  pub_get:
     exec: flutter pub get
+
+  pub_outdated:
+    exec: flutter pub outdated
+
+  pub_upgrade:
+    exec: flutter pub upgrade
+
+  run_tests:
+    exec: flutter test
+    packageFilters:
+      ignore: [flutter_queue_it]
