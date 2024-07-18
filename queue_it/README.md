@@ -60,7 +60,7 @@ void main() {
 }
 ```
 
-For Flutter projects you will want to use [flutter_queue_it](https://website-name.com), which listens to queue changes and rebuilds your widget tree:
+For Flutter projects you may also want to use [flutter_queue_it](https://website-name.com), which listens to queue changes and rebuilds your widget tree:
 ```dart
 QueueItWidget(
   queue: _queue,
