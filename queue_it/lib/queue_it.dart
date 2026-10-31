@@ -1,4 +1,4 @@
-library queue_it;
+library;
 
 export 'src/queue_it.dart';
 export 'callbacks.dart';

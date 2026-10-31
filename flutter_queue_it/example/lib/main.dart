@@ -3,7 +3,7 @@ import 'dart:developer';
 import 'dart:math' as math;
 
 import 'package:queue_it/queue_it.dart';
-import 'package:faker/faker.dart';
+import 'package:faker/faker.dart' hide Image;
 import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 
@@ -107,8 +107,8 @@ class _ExampleAppState extends State<ExampleApp> {
                   FloatingActionButton(
                     onPressed: () {
                       _addImage(
-                        _faker.image.image(
-                          random: true,
+                        _faker.image.loremPicsum(
+                          random: math.Random().nextInt(1000),
                         ),
                       );
                     },

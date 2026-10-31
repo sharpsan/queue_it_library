@@ -1,29 +1,25 @@
 name: flutter_queue_it_example
-description: "A new Flutter project."
+description: "An image queue that shows QueueItWidget rebuilding as items are processed."
 publish_to: "none"
 
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: ^3.5.0
+
+resolution: workspace
 
 dependencies:
   flutter:
     sdk: flutter
-  queue_it: any
-  flutter_queue_it: any
-  faker: ^2.1.0
+  queue_it: ^0.10.0
+  flutter_queue_it: ^0.10.0
+  faker: ^2.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
-
-dependency_overrides:
-  flutter_queue_it:
-    path: ../
-  queue_it:
-    path: ../../queue_it
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true

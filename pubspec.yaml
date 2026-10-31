@@ -1,7 +1,33 @@
-name: melos_root
+name: queue_it_library
 publish_to: none
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: ^3.9.0
+
+workspace:
+  - queue_it
+  - queue_it/example
+  - flutter_queue_it
+  - flutter_queue_it/example
+
 dev_dependencies:
-  melos: ^6.0.0
+  melos: ^8.10.0
+
+melos:
+  repository: https://github.com/sharpsan/queue_it_library
+
+  # `melos analyze`, `melos format` and `melos clean` are built in.
+  scripts:
+    test:
+      description: Run the tests of every package that has them.
+      exec: flutter test
+      packageFilters:
+        dirExists: test
+
+    outdated:
+      description: List outdated dependencies across the workspace.
+      run: flutter pub outdated
+
+    upgrade:
+      description: Upgrade dependencies across the workspace.
+      run: flutter pub upgrade
