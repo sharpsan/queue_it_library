@@ -1,5 +1,6 @@
 # queue_it_library
 
+[![CI](https://github.com/sharpsan/queue_it_library/actions/workflows/ci.yml/badge.svg)](https://github.com/sharpsan/queue_it_library/actions/workflows/ci.yml)
 [![melos](https://img.shields.io/badge/maintained%20with-melos-f700ff.svg?style=flat-square)](https://github.com/invertase/melos)
 [![Pub Version](https://img.shields.io/pub/v/queue_it?label=queue_it)](https://pub.dev/packages/queue_it)
 [![Pub Version](https://img.shields.io/pub/v/flutter_queue_it?label=flutter_queue_it)](https://pub.dev/packages/flutter_queue_it)
