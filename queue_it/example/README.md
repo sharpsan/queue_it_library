@@ -1,2 +1,2 @@
-A sample command-line application with an entrypoint in `bin/`, library code
-in `lib/`, and example unit test in `test/`.
+A command-line program that processes five downloads two at a time, retries one that fails, and
+waits for it with `waitFor`. Run it from this folder with `dart run lib/main.dart`.
