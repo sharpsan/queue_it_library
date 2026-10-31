@@ -5,6 +5,13 @@ on:
     branches: [main, dev]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: Format, analyze and test
@@ -27,6 +34,11 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      - name: Check publishing
+        run: |
+          (cd queue_it && dart pub publish --dry-run)
+          (cd flutter_queue_it && flutter pub publish --dry-run)
+
       - name: Test queue_it
         working-directory: queue_it
         run: dart test --coverage-path=coverage/lcov.info
@@ -41,3 +53,32 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: queue_it/coverage/lcov.info,flutter_queue_it/coverage/lcov.info
           disable_search: true
+
+  minimum:
+    name: Analyze and test on the minimum SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Dart 3.5, the packages' minimum.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.24.5
+          cache: true
+
+      - name: Take the packages out of the workspace
+        run: sh tool/leave_workspace.sh
+
+      - name: Test queue_it
+        working-directory: queue_it
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
+      - name: Test flutter_queue_it
+        working-directory: flutter_queue_it
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
