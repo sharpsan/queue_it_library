@@ -12,8 +12,8 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  queue_it: ^0.10.0
-  flutter_queue_it: ^0.10.0
+  queue_it: ^0.11.0
+  flutter_queue_it: ^0.11.0
   faker: ^2.2.0
 
 dev_dependencies:

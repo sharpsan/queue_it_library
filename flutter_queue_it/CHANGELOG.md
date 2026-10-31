@@ -1,3 +1,8 @@
+## 0.11.0
+
+* Requires queue_it 0.11.0, which fixes canceling, removing and stopping, and lets `onUpdate`
+  listeners call the queue.
+
 ## 0.10.0
 
 * Requires Dart 3.5 and Flutter 3.24 or later. The previous Flutter minimum (1.17) was lower

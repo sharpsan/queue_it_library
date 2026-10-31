@@ -1,38 +1,51 @@
 import 'package:queue_it/src/models/queue_event.dart';
 import 'package:queue_it/src/models/queue_item.dart';
 
+/// The state of a queue when an event happened, sent on the queue's
+/// `onUpdate` stream.
+///
+/// The queue's flags and times are as they were at the event, and
+/// [eventItem] is a copy of the item involved, taken at that moment.
+/// [items] is different: unless the queue copies items into snapshots, it
+/// holds the queue's live items, which keep changing.
 class QueueSnapshot<T> {
   /// The event that triggered the snapshot.
   final QueueEvent event;
 
-  /// The number of times we will retry an item.
+  /// The number of times the queue retries a failed item.
   final int retries;
 
-  /// Whether the queue has been started.
+  /// Whether the queue had been started.
   final bool isStarted;
 
-  /// Whether the queue is currently processing items.
+  /// Whether the queue was processing items.
   final bool isProcessing;
 
-  /// The current batch id.
+  /// The queue's current batch id.
   final String currentBatchId;
 
-  /// The subject item of the event, if any.
+  /// A copy of the item the event is about, taken at the time of the event,
+  /// or null for events about the whole queue.
   final QueueItem<T>? eventItem;
 
-  /// The items in the queue at the time of the snapshot.
+  /// The items in the queue's current batch.
+  ///
+  /// Unless the queue was created with `deepCopyItemsInSnapshot: true`, this
+  /// is a live view of the queue's items: iterating it later shows the items
+  /// as they are then, and changing the queue while iterating it throws a
+  /// [ConcurrentModificationError]. Copy it with `toList()` to keep it.
   final Iterable<QueueItem<T>> items;
 
-  /// The time the queue was started.
+  /// When the queue was last started.
   final DateTime? startedAt;
 
-  /// The time the queue was started processing.
+  /// When the queue last started processing items.
   final DateTime? startedProcessingAt;
 
-  /// The time the queue was stopped processing.
+  /// When the queue last stopped processing items.
   final DateTime? stoppedProcessingAt;
 
-  /// The time the queue was stopped.
+  /// When the queue was last stopped.
   final DateTime? stoppedAt;
 
   @override
@@ -52,6 +65,7 @@ class QueueSnapshot<T> {
     return s.toString();
   }
 
+  /// Creates a snapshot. Queues create them; you don't need to.
   const QueueSnapshot({
     required this.event,
     required this.retries,

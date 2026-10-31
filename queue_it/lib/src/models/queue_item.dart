@@ -2,7 +2,13 @@ import 'package:queue_it/src/models/queue_item_status.dart';
 import 'package:uuid/uuid.dart';
 
 //TODO: should this be an immutable object?  Will that improve performance?
+/// An item in a queue: its data, its status and when the status changed.
+///
+/// The queue creates items when you add data to it and passes them to its
+/// item handler. The queue's own items are live: their status changes as the
+/// queue processes them. Snapshots hold copies, made with [copyWith].
 class QueueItem<T> {
+  /// Creates an item with [status]. Without an [id], it gets a random UUID.
   QueueItem({
     required this.data,
     required QueueItemStatus status,
@@ -20,29 +26,63 @@ class QueueItem<T> {
 
   /// The id of the batch that the item belongs to.
   ///
-  /// This is used to group items together for processing and
-  /// is regenerated each time the queue completes all pending items.
+  /// Items added while the queue has unfinished items join its current batch.
+  /// Once every item has finished, the next item added starts a new batch.
   final String batchId;
 
-  /// The number of times the item has attempted to be processed.
+  /// How many times the item has gone back to [QueueItemStatus.pending] to
+  /// be processed again, whether to retry a failure or because its handler
+  /// set [nextStatus] to pending.
   int get retryCount => _retryCount ?? 0;
 
   /// The current status of the item.
   QueueItemStatus get status => _status!;
 
-  /// The next status that the item should transition to.
+  /// The status the item moves to when its handler returns, if the handler
+  /// sets it.
+  ///
+  /// Without it, an item whose handler returns is
+  /// [QueueItemStatus.completed], and one whose handler throws has failed.
+  /// The handler can instead set:
+  ///
+  /// - [QueueItemStatus.failed] to fail the attempt without throwing. Retries
+  ///   apply, and [error] is null.
+  /// - [QueueItemStatus.canceled] or [QueueItemStatus.removed] to cancel or
+  ///   remove the item.
+  /// - [QueueItemStatus.pending] to process the item again, after the items
+  ///   already waiting. This isn't limited by the queue's retries, but it adds
+  ///   to [retryCount], which leaves fewer retries for failures.
+  ///
+  /// [QueueItemStatus.processing] isn't allowed: the attempt fails with a
+  /// [StateError].
   QueueItemStatus? nextStatus;
 
+  /// The error that made the item's last failed attempt fail, or null if no
+  /// attempt has failed or the handler failed it through [nextStatus].
+  ///
+  /// The queue keeps it when a later attempt succeeds.
+  Object? error;
+
+  /// The stack trace of [error].
+  StackTrace? stackTrace;
+
+  /// When the item last became [QueueItemStatus.pending]: when it was added,
+  /// or when it was queued again.
   DateTime? get queuedAt => _queuedAt;
 
+  /// When the item's last attempt started.
   DateTime? get startedProcessingAt => _startedProcessingAt;
 
+  /// When the item was completed.
   DateTime? get completedAt => _completedAt;
 
+  /// When the item's last attempt failed.
   DateTime? get failedAt => _failedAt;
 
+  /// When the item was canceled.
   DateTime? get canceledAt => _canceledAt;
 
+  /// When the item was removed from the queue.
   DateTime? get removedAt => _removedAt;
 
   QueueItemStatus? _status;
@@ -56,6 +96,12 @@ class QueueItem<T> {
   DateTime? _canceledAt;
   DateTime? _removedAt;
 
+  /// Changes the status and records when it changed.
+  ///
+  /// The queue sets this as it processes the item, and doesn't notice when
+  /// anything else does. To change the status of an item in a queue, use the
+  /// queue's `cancel` and `remove` methods, or [nextStatus] from the item's
+  /// handler.
   set status(QueueItemStatus value) {
     if (value == _status) return;
     final now = DateTime.now();
@@ -94,9 +140,11 @@ class QueueItem<T> {
     s.writeln('Failed At: $failedAt');
     s.writeln('Canceled At: $canceledAt');
     s.writeln('Removed At: $removedAt');
+    if (error != null) s.writeln('Error: $error');
     return s.toString();
   }
 
+  /// A one-line summary of the item's status, data and id, for logging.
   String get summaryTableLine {
     final s = StringBuffer();
     s.write(status.name.padRight(15));
@@ -108,6 +156,11 @@ class QueueItem<T> {
     return s.toString();
   }
 
+  /// Returns a copy of the item, with any of its fields replaced.
+  ///
+  /// The copy is a separate object: it doesn't change as the original does.
+  /// Queue methods that take an item find the queue's item by its [id], so
+  /// they work with copies too.
   QueueItem<T> copyWith({
     String? id,
     T? data,
@@ -120,6 +173,8 @@ class QueueItem<T> {
     DateTime? removedAt,
     QueueItemStatus? status,
     int? retryCount,
+    Object? error,
+    StackTrace? stackTrace,
   }) {
     return QueueItem<T>(
       id: id ?? this.id,
@@ -134,6 +189,8 @@ class QueueItem<T> {
       .._completedAt = completedAt ?? this.completedAt
       .._failedAt = failedAt ?? this.failedAt
       .._canceledAt = canceledAt ?? this.canceledAt
-      .._removedAt = removedAt ?? this.removedAt;
+      .._removedAt = removedAt ?? this.removedAt
+      ..error = error ?? this.error
+      ..stackTrace = stackTrace ?? this.stackTrace;
   }
 }
