@@ -137,7 +137,7 @@ class _ExampleAppState extends State<ExampleApp> {
                           itemBuilder: (context, index) {
                             final item = items.toList()[index];
                             return Dismissible(
-                              key: Key(item.data),
+                              key: ValueKey(item.id),
                               onDismissed: (direction) {
                                 _queue.remove(item);
                               },
