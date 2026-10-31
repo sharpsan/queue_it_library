@@ -25,6 +25,7 @@ void main() {
           /// check the number of times we retried the items
           for (final item in snapshot.items) {
             expect(item.retryCount, snapshot.retries);
+            expect(item.status, QueueItemStatus.canceled);
           }
         }
       })

@@ -70,7 +70,7 @@ class _ExampleAppState extends State<ExampleApp> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  /// Start queue
+                  /// Stop queue
                   if (_queue.isStarted)
                     FloatingActionButton(
                       onPressed: () {
