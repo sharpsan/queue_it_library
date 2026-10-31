@@ -10,7 +10,7 @@
 This is a monorepo containing the following packages:
 
 - [queue_it](https://github.com/sharpsan/queue_it_library/tree/main/queue_it): Queue handling with concurrency support for Dart.
-- [flutter_queue_it](https://github.com/sharpsan/queue_it_library/tree/main/flutter_queue_it): Provides **QueueItWidget** that rebuilds when the queue changes.
+- [flutter_queue_it](https://github.com/sharpsan/queue_it_library/tree/main/flutter_queue_it): Provides **QueueItWidget**, which rebuilds when the queue changes, and **QueueItListener**, which calls back for every change.
 
 Please check out each project for more details and examples.
 
@@ -27,3 +27,6 @@ dart run melos test     # runs the tests of every package that has them
 
 `melos format`, `melos run outdated` and `melos run upgrade` are also available. If melos is
 activated globally (`dart pub global activate melos`), drop the `dart run`.
+
+The packages themselves support Dart 3.5 and Flutter 3.24. CI checks that by taking them out of
+the workspace with `tool/leave_workspace.sh` and testing them on Flutter 3.24.5.
