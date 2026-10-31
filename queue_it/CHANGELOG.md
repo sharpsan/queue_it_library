@@ -1,3 +1,9 @@
+## 0.10.0
+
+* Requires Dart 3.5 or later.
+* Added pub.dev topics.
+* Fixed the README's link to flutter_queue_it.
+
 ## 0.9.0
 
 * Fix dependency constraints

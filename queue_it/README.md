@@ -60,12 +60,12 @@ void main() {
 }
 ```
 
-For Flutter projects you may also want to use [flutter_queue_it](https://website-name.com), which listens to queue changes and rebuilds your widget tree:
+For Flutter projects you may also want to use [flutter_queue_it](https://pub.dev/packages/flutter_queue_it), which listens to queue changes and rebuilds your widget tree:
 ```dart
 QueueItWidget(
   queue: _queue,
   builder: (context, snapshot) {
-    /// `builder` will be called each time the queue updates
+    /// `builder` runs again whenever the queue changes
     final items = _queue.items().toList();
     return ListView.builder(
       itemCount: items.length,

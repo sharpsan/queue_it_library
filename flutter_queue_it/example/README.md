@@ -1,16 +1,25 @@
-# example
+# flutter_queue_it example
 
-A new Flutter project.
+An image queue built with `QueueItWidget`. Each item is the URL of a random image from
+[Lorem Picsum](https://picsum.photos). The queue processes three items at a time, retries a failed
+item up to three times, and gives items readable ids instead of UUIDs.
 
-## Getting Started
+The screen shows:
 
-This project is a starting point for a Flutter application.
+- a progress bar while items are processing,
+- each item with its image, its timestamps and an icon for its status,
+- a button that starts the queue, stops it while it runs, or clears it once everything is done,
+- a button that adds an image.
 
-A few resources to get you started if this is your first Flutter project:
+Swipe an item away to remove it from the queue. A listener on `onUpdate` also logs every queue
+event with `dart:developer`'s `log`, which shows in your IDE's debug console and in DevTools.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Run it
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+From this folder:
+
+```sh
+flutter run
+```
+
+The code is in [lib/main.dart](lib/main.dart).
