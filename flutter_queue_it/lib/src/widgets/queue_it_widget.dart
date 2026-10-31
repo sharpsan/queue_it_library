@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:queue_it/queue_it.dart';
 import 'package:flutter/widgets.dart';
 
@@ -29,10 +31,10 @@ import 'package:flutter/widgets.dart';
 /// widget started listening, so a queue that already has items still gives a
 /// null snapshot until its next change.
 ///
-/// After that, each queue event schedules a rebuild. Events that arrive in the
-/// same frame cause a single rebuild with the latest snapshot, so the builder
-/// doesn't see every event. To act on each event, such as to log it, listen
-/// to [QueueIt.onUpdate] yourself.
+/// After that, each queue event schedules a rebuild, unless [buildWhen] skips
+/// it. Events that arrive in the same frame cause a single rebuild with the
+/// latest snapshot, so the builder doesn't see every event. To act on each
+/// event, such as to show a message, use a [QueueItListener].
 ///
 /// ## The queue or the snapshot
 ///
@@ -59,6 +61,7 @@ class QueueItWidget<T> extends StatefulWidget {
     super.key,
     required this.queue,
     required this.builder,
+    this.buildWhen,
   });
 
   /// The queue to listen to.
@@ -77,21 +80,60 @@ class QueueItWidget<T> extends StatefulWidget {
     QueueSnapshot<T>? snapshot,
   ) builder;
 
+  /// Decides whether an event rebuilds the widget. Without it, every event
+  /// does.
+  ///
+  /// It's called with the snapshot of each event. When it returns false, the
+  /// widget doesn't rebuild, and the snapshot the builder gets stays the last
+  /// one that passed. For example, to rebuild only when items are added or
+  /// removed:
+  ///
+  /// ```dart
+  /// buildWhen: (snapshot) => const {
+  ///   QueueEvent.itemAdded,
+  ///   QueueEvent.itemRemoved,
+  ///   QueueEvent.removedAll,
+  /// }.contains(snapshot.event),
+  /// ```
+  final bool Function(QueueSnapshot<T> snapshot)? buildWhen;
+
   @override
   State<QueueItWidget<T>> createState() => _QueueItWidgetState<T>();
 }
 
 class _QueueItWidgetState<T> extends State<QueueItWidget<T>> {
+  StreamSubscription<QueueSnapshot<T>>? _subscription;
+  QueueSnapshot<T>? _snapshot;
+
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QueueSnapshot<T>>(
-      stream: widget.queue.onUpdate,
-      builder: (
-        BuildContext context,
-        AsyncSnapshot<QueueSnapshot<T>> snapshot,
-      ) {
-        return widget.builder(context, snapshot.data);
-      },
-    );
+  void initState() {
+    super.initState();
+    _listen();
   }
+
+  @override
+  void didUpdateWidget(QueueItWidget<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.queue != widget.queue) {
+      _subscription?.cancel();
+      _listen();
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  void _listen() {
+    _subscription = widget.queue.onUpdate.listen((snapshot) {
+      if (widget.buildWhen?.call(snapshot) ?? true) {
+        setState(() => _snapshot = snapshot);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _snapshot);
 }

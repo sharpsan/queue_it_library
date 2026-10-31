@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:queue_it/queue_it.dart';
 
 /// These tests pin the QueueItWidget behavior that the README and API docs describe.
 void main() {
@@ -113,6 +112,46 @@ void main() {
 
     expect(builds.last!.eventItem!.data, 'a');
     expect(otherBuilds.last!.eventItem!.data, 'a');
+  });
+
+  testWidgets('rebuilds only for the events buildWhen allows', (tester) async {
+    await tester.pumpWidget(QueueItWidget<String>(
+      queue: queue,
+      buildWhen: (snapshot) => snapshot.event == QueueEvent.itemAdded,
+      builder: (context, snapshot) {
+        builds.add(snapshot);
+        return const SizedBox();
+      },
+    ));
+
+    queue
+      ..add('a')
+      ..start();
+    await tester.pumpAndSettle();
+
+    expect(builds, hasLength(2));
+    expect(builds.last!.event, QueueEvent.itemAdded);
+    expect(queue.items().completed, hasLength(1));
+  });
+
+  testWidgets('uses the buildWhen of the latest widget', (tester) async {
+    Widget build(bool rebuild) => QueueItWidget<String>(
+          queue: queue,
+          buildWhen: (snapshot) => rebuild,
+          builder: (context, snapshot) {
+            builds.add(snapshot);
+            return const SizedBox();
+          },
+        );
+    await tester.pumpWidget(build(false));
+    queue.add('skipped');
+    await tester.pump();
+    expect(builds, [null]);
+
+    await tester.pumpWidget(build(true));
+    queue.add('built');
+    await tester.pump();
+    expect(builds.last!.eventItem!.data, 'built');
   });
 
   testWidgets('leaves the queue usable after the widget is removed',

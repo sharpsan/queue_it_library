@@ -1,5 +1,5 @@
 name: flutter_queue_it_example
-description: "An image queue that shows QueueItWidget rebuilding as items are processed."
+description: "An image downloader that shows QueueItWidget and QueueItListener at work."
 publish_to: "none"
 
 version: 1.0.0+1
@@ -12,10 +12,8 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  queue_it: ^0.11.0
   flutter_queue_it: ^0.11.0
-  faker: ^2.2.0
-
+  http: ^1.6.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

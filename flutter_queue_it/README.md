@@ -6,16 +6,18 @@
 > Flutter integration for [queue_it](https://pub.dev/packages/queue_it).
 
 **`QueueItWidget`** rebuilds whenever a `QueueIt` queue changes, so your UI can show what's
-waiting, what's processing and how far along the queue is.
+waiting, what's processing and how far along the queue is. **`QueueItListener`** calls back for
+every event, to show a message or log, without rebuilding.
 
 ## Install
 
 ```sh
-flutter pub add queue_it flutter_queue_it
+flutter pub add flutter_queue_it
 ```
 
-`queue_it` provides the queue and this package provides the widget. Both need Dart 3.5 and
-Flutter 3.24 or later.
+`queue_it` provides the queue and this package provides the widgets. This package exports
+`queue_it`, so `package:flutter_queue_it/flutter_queue_it.dart` is the only import you need. It
+needs Dart 3.5 and Flutter 3.24 or later.
 
 ## Quick start
 
@@ -25,7 +27,6 @@ This app processes "uploads" two at a time and lists them with their status:
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
-import 'package:queue_it/queue_it.dart';
 
 void main() => runApp(const MaterialApp(home: UploadsPage()));
 
@@ -100,6 +101,8 @@ item is processed; starting a queue that's already running does nothing.
   has items.
 - **Each change schedules a rebuild.** Changes in the same frame cause a single rebuild with the
   latest snapshot, so the builder doesn't see every event.
+- **`buildWhen` skips events.** It gets each event's snapshot and returns whether to rebuild, for
+  example to rebuild a counter only when items are added or removed.
 - **Read state from the queue.** `queue.items()`, `queue.isStarted` and `queue.isProcessing` are
   always current, including on the first build. Use the snapshot for the event behind a rebuild:
   `snapshot.event` says what happened, and `snapshot.eventItem` is a copy of the item involved,
@@ -111,50 +114,44 @@ item is processed; starting a queue that's already running does nothing.
 
 ## Acting on every event
 
-The builder isn't the place to log or notify: it skips events, and Flutter can call it at other
-times. Listen to `queue.onUpdate` instead. In the quick start's `_UploadsPageState`, this shows a
-message each time the queue runs out of work:
+The builder isn't the place to show a message or log: it skips events, and Flutter can call it at
+other times. Wrap the part of the tree that needs it in a `QueueItListener`, which calls its
+listener once for every event, in order. In the quick start, this shows a message each time the
+queue runs out of work:
 
 ```dart
-late final StreamSubscription<QueueSnapshot<String>> _subscription;
-
-@override
-void initState() {
-  super.initState();
-  _subscription = _queue.onUpdate.listen((snapshot) {
-    if (snapshot.event == QueueEvent.stoppedProcessing && mounted) {
+body: QueueItListener<String>(
+  queue: _queue,
+  listener: (context, snapshot) {
+    if (snapshot.event == QueueEvent.stoppedProcessing) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All uploads processed')),
       );
     }
-  });
-}
-
-@override
-void dispose() {
-  _subscription.cancel();
-  _queue.dispose();
-  super.dispose();
-}
+  },
+  child: QueueItWidget<String>(
+    // ...
+  ),
+),
 ```
 
-`StreamSubscription` comes from `dart:async`.
+The listener runs synchronously, as the queue sends the event, and it can call the queue.
 
 ## Owning the queue
 
-- The widget never starts, stops or disposes the queue. Keep the queue somewhere that outlives
+- The widgets never start, stop or dispose of the queue. Keep the queue somewhere that outlives
   rebuilds, such as a `State`, and call `queue.dispose()` when you're done with it.
-- Any number of `QueueItWidget`s can listen to the same queue, such as a list and a counter in the
-  app bar.
-- If a rebuild passes a different queue, the widget listens to the new one. Until the new queue
-  changes, the builder still receives the old queue's last snapshot.
+- Any number of `QueueItWidget`s and `QueueItListener`s can listen to the same queue, such as a
+  list and a counter in the app bar.
+- If a rebuild passes a different queue, the widgets listen to the new one. Until the new queue
+  changes, a `QueueItWidget`'s builder still receives the old queue's last snapshot.
 
 ## Learn more
 
 - [queue_it](https://pub.dev/packages/queue_it) covers the queue itself: running items in
   parallel, retries, item statuses and batches.
-- The [example app](https://pub.dev/packages/flutter_queue_it/example) queues images, processes
-  three at a time with retries, and shows progress, each item's status, and start and stop
-  buttons.
+- The [example app](https://pub.dev/packages/flutter_queue_it/example) downloads images three at
+  a time, with simulated failures, retries after a delay, progress, cancel and remove, and a
+  message for each image that runs out of retries.
 - The [API reference](https://pub.dev/documentation/flutter_queue_it/latest/) documents
-  `QueueItWidget`.
+  `QueueItWidget` and `QueueItListener`.

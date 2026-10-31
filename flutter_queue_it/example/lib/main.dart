@@ -1,50 +1,52 @@
-import 'dart:async';
-import 'dart:developer';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:queue_it/queue_it.dart';
-import 'package:faker/faker.dart' hide Image;
 import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
-  runApp(const ExampleApp());
+  runApp(const MaterialApp(home: ImageQueuePage()));
 }
 
-class ExampleApp extends StatefulWidget {
-  const ExampleApp({super.key});
+/// Downloads images three at a time. Some attempts fail on purpose, so you
+/// can watch the retries, and the images that run out of retries.
+class ImageQueuePage extends StatefulWidget {
+  const ImageQueuePage({super.key});
 
   @override
-  State<ExampleApp> createState() => _ExampleAppState();
+  State<ImageQueuePage> createState() => _ImageQueuePageState();
 }
 
-class _ExampleAppState extends State<ExampleApp> {
-  final _queue = QueueIt<String>(
+class _ImageQueuePageState extends State<ImageQueuePage> {
+  final _random = math.Random();
+
+  /// The downloaded images, by item id.
+  final _images = <String, Uint8List>{};
+
+  late final _queue = QueueIt<String>(
     parallel: 3,
-    retries: 3,
+    retries: 2,
+    retryDelay: (retry) => Duration(seconds: retry),
     useFriendlyIds: true,
-    itemHandler: (item) async {
-      log('Processing item: $item');
+    itemHandler: _download,
+  );
 
-      /// generate a duration between 0.5 and 2 seconds
-      final duration = Duration(
-        milliseconds: (500 + (math.Random().nextInt(1500))).toInt(),
-      );
-
-      await Future.delayed(duration);
-    },
-  )..onUpdate.listen(
-      (snapshot) {
-        String message;
-        if (snapshot.eventItem != null) {
-          message = snapshot.eventItem!.summaryTableLine;
-        } else {
-          message = snapshot.event.name;
-        }
-        log(message, name: 'QueueIt');
-      },
+  Future<void> _download(QueueItem<String> item) async {
+    // Slow the downloads down and make some of them fail, so the queue's
+    // work is easy to follow.
+    await Future<void>.delayed(
+      Duration(milliseconds: 500 + _random.nextInt(1500)),
     );
-  final _faker = Faker();
+    if (_random.nextDouble() < 0.3) {
+      throw Exception('Simulated network error');
+    }
+    final response = await http.get(Uri.parse(item.data));
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    _images[item.id] = response.bodyBytes;
+  }
 
   @override
   void dispose() {
@@ -52,146 +54,188 @@ class _ExampleAppState extends State<ExampleApp> {
     super.dispose();
   }
 
+  void _addImages() {
+    for (var i = 0; i < 5; i++) {
+      _queue.add('https://picsum.photos/seed/${_random.nextInt(100000)}/200');
+    }
+  }
+
+  void _remove(QueueItem<String> item) {
+    _queue.remove(item);
+    _images.remove(item.id);
+  }
+
+  void _removeFinished() {
+    for (final item in _queue.items().toList()) {
+      if (item.status
+          case QueueItemStatus.completed ||
+              QueueItemStatus.failed ||
+              QueueItemStatus.canceled) {
+        _remove(item);
+      }
+    }
+  }
+
+  /// Tells the user when an image has run out of retries.
+  void _showFailure(BuildContext context, QueueSnapshot<String> snapshot) {
+    final item = snapshot.eventItem;
+    // Every failed attempt sends a failed status. Only the last one stays.
+    if (item == null ||
+        item.status != QueueItemStatus.failed ||
+        item.retryCount < _queue.retries) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${item.id} failed: ${item.error}')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: QueueItWidget(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('queue_it'),
+        actions: [
+          IconButton(
+            onPressed: _removeFinished,
+            tooltip: 'Remove finished images',
+            icon: const Icon(Icons.clear_all),
+          ),
+        ],
+      ),
+      body: QueueItListener<String>(
         queue: _queue,
-        builder: (context, snapshot) {
-          final items = _queue.items();
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('queue_it'),
-            ),
-            floatingActionButtonLocation:
-                FloatingActionButtonLocation.centerDocked,
-            floatingActionButton: Padding(
-              padding: const EdgeInsets.all(18.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  /// Stop queue
-                  if (_queue.isStarted)
-                    FloatingActionButton(
-                      onPressed: () {
-                        _queue.stop();
-                      },
-                      tooltip: 'Cancel Queue',
-                      backgroundColor: Colors.red,
-                      child: const Icon(Icons.stop),
-                    )
-
-                  /// "Done" fab
-                  else if (_queue.items().pending.isEmpty &&
-                      _queue.items().isNotEmpty)
-                    FloatingActionButton(
-                      backgroundColor: Colors.green,
-                      onPressed: () {
-                        _queue.removeAll();
-                      },
-                      child: const Icon(Icons.check),
-                    )
-
-                  /// Start queue
-                  else
-                    FloatingActionButton(
-                      onPressed: () {
-                        _queue.start();
-                      },
-                      tooltip: 'Start Queue',
-                      backgroundColor: Colors.green,
-                      child: const Icon(Icons.play_arrow),
-                    ),
-
-                  /// Add image button
-                  FloatingActionButton(
-                    onPressed: () {
-                      _addImage(
-                        _faker.image.loremPicsum(
-                          random: math.Random().nextInt(1000),
-                        ),
-                      );
-                    },
-                    tooltip: 'Add Image',
-                    child: const Icon(Icons.add),
-                  ),
-                ],
-              ),
-            ),
-            body: Column(
-              mainAxisSize: MainAxisSize.max,
+        listener: _showFailure,
+        child: QueueItWidget<String>(
+          queue: _queue,
+          builder: (context, snapshot) {
+            final items = _queue.items().toList();
+            return Column(
               children: [
-                /// Progress bar
-                if (_queue.items().processing.isNotEmpty)
+                if (_queue.isProcessing)
                   LinearProgressIndicator(
-                    value: _queue.items().progress,
+                    value: _queue.currentBatchItems.progress,
                   ),
-
-                /// Queue list
                 Expanded(
                   child: items.isEmpty
-                      ? const Center(child: Text('No items in queue'))
+                      ? const Center(child: Text('Add images to download'))
                       : ListView.builder(
                           padding: const EdgeInsets.only(bottom: 100),
                           itemCount: items.length,
-                          itemBuilder: (context, index) {
-                            final item = items.toList()[index];
-                            return Dismissible(
-                              key: ValueKey(item.id),
-                              onDismissed: (direction) {
-                                _queue.remove(item);
-                              },
-                              child: ListTile(
-                                leading: Image.network(item.data),
-                                title: Text(item.data),
-                                subtitle: Wrap(
-                                  children: [
-                                    if (item.queuedAt != null)
-                                      Text('Added: ${item.queuedAt}'),
-                                    if (item.startedProcessingAt != null)
-                                      Text(
-                                          'Started: ${item.startedProcessingAt}'),
-                                    if (item.completedAt != null)
-                                      Text('Done: ${item.completedAt}'),
-                                    if (item.failedAt != null)
-                                      Text('Failed: ${item.failedAt}'),
-                                  ],
-                                ),
-                                trailing: _iconFromStatus(item.status),
-                              ),
-                            );
-                          },
+                          itemBuilder: (context, index) =>
+                              _buildItem(items[index]),
                         ),
                 ),
               ],
+            );
+          },
+        ),
+      ),
+      // Only the start and stop events change the buttons.
+      floatingActionButton: QueueItWidget<String>(
+        queue: _queue,
+        buildWhen: (snapshot) =>
+            snapshot.event == QueueEvent.startedQueue ||
+            snapshot.event == QueueEvent.stoppedQueue,
+        builder: (context, snapshot) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_queue.isStarted)
+              FloatingActionButton(
+                heroTag: 'stop',
+                onPressed: _queue.stop,
+                tooltip: 'Stop the queue',
+                backgroundColor: Colors.red,
+                child: const Icon(Icons.stop),
+              )
+            else
+              FloatingActionButton(
+                heroTag: 'start',
+                // Keep the queue running, so images added later download
+                // right away.
+                onPressed: () => _queue.start(stopAutomatically: false),
+                tooltip: 'Start the queue',
+                backgroundColor: Colors.green,
+                child: const Icon(Icons.play_arrow),
+              ),
+            const SizedBox(width: 16),
+            FloatingActionButton(
+              heroTag: 'add',
+              onPressed: _addImages,
+              tooltip: 'Add five images',
+              child: const Icon(Icons.add),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
 
-  void _addImage(String imageUrl) {
-    _queue.add(imageUrl);
+  Widget _buildItem(QueueItem<String> item) {
+    final image = _images[item.id];
+    final active = item.status == QueueItemStatus.pending ||
+        item.status == QueueItemStatus.processing;
+    return Dismissible(
+      key: ValueKey(item.id),
+      onDismissed: (direction) => _remove(item),
+      child: ListTile(
+        leading: SizedBox.square(
+          dimension: 48,
+          child: image != null
+              ? Image.memory(image, fit: BoxFit.cover)
+              : Icon(_iconFromStatus(item.status)),
+        ),
+        title: Text(item.id),
+        subtitle: Text(_describe(item)),
+        trailing: active
+            ? IconButton(
+                onPressed: () => _queue.cancel(item),
+                tooltip: 'Cancel',
+                icon: const Icon(Icons.close),
+              )
+            : null,
+      ),
+    );
+  }
+
+  String _describe(QueueItem<String> item) {
+    final retry = item.retryCount;
+    switch (item.status) {
+      case QueueItemStatus.pending:
+        return retry == 0
+            ? 'Waiting'
+            : 'Waiting for retry $retry of ${_queue.retries}: ${item.error}';
+      case QueueItemStatus.processing:
+        return retry == 0 ? 'Downloading' : 'Downloading, retry $retry';
+      case QueueItemStatus.completed:
+        final time = item.completedAt!.difference(item.startedProcessingAt!);
+        return 'Downloaded in ${time.inMilliseconds} ms';
+      case QueueItemStatus.failed:
+        return 'Failed: ${item.error}';
+      case QueueItemStatus.canceled:
+        return 'Canceled';
+      case QueueItemStatus.removed:
+        return 'Removed';
+    }
   }
 
   /// Returns an icon based on the status of the item
-  Icon _iconFromStatus(QueueItemStatus status) {
+  IconData _iconFromStatus(QueueItemStatus status) {
     switch (status) {
       case QueueItemStatus.pending:
-        return const Icon(Icons.timer);
+        return Icons.timer;
       case QueueItemStatus.processing:
-        return const Icon(Icons.hourglass_top);
+        return Icons.hourglass_top;
       case QueueItemStatus.completed:
-        return const Icon(Icons.check);
+        return Icons.check;
       case QueueItemStatus.failed:
-        return const Icon(Icons.error);
+        return Icons.error;
       case QueueItemStatus.canceled:
-        return const Icon(Icons.cancel);
+        return Icons.cancel;
 
       /// unused
       case QueueItemStatus.removed:
-        return const Icon(Icons.delete);
+        return Icons.delete;
     }
   }
 }
