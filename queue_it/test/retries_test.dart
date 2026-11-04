@@ -182,6 +182,33 @@ void main() {
       expect(attempts, 1);
       expect(statuses(queue), ['1:canceled']);
     });
+
+    test('lets a listener cancel a retry as it is queued', () async {
+      var attempts = 0;
+      final queue = QueueIt<int>(
+        retries: 1,
+        retryDelay: (retry) => const Duration(hours: 1),
+        itemHandler: (item) {
+          attempts++;
+          throw Exception('failed');
+        },
+      );
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.status == QueueItemStatus.pending && item!.retryCount == 1) {
+          queue.cancel(item);
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      // The queue doesn't wait out the canceled retry's delay.
+      await queue.running.timeout(const Duration(seconds: 5));
+
+      expect(attempts, 1);
+      expect(statuses(queue), ['1:canceled']);
+    });
   });
 
   test('drops waiting retries on removeAll and dispose', () async {

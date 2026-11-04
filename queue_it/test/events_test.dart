@@ -54,6 +54,81 @@ void main() {
           ['1:failed', '2:canceled', '3:canceled', '4:canceled']);
     });
 
+    test('to cancel or remove an item as it starts, before its handler runs',
+        () async {
+      final handled = <int>[];
+      final queue = QueueIt<int>(itemHandler: (item) => handled.add(item.data));
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.status != QueueItemStatus.processing) return;
+        if (item!.data == 1) queue.cancel(item);
+        if (item.data == 2) queue.remove(item);
+      });
+      queue
+        ..add(1)
+        ..add(2)
+        ..add(3)
+        ..start();
+      await queue.running;
+
+      expect(handled, [3]);
+      expect(statuses(queue), ['1:canceled', '3:completed']);
+    });
+
+    test('to cancel the next item when processing starts', () async {
+      final handled = <int>[];
+      final queue = QueueIt<int>(itemHandler: (item) => handled.add(item.data));
+      addTearDown(queue.dispose);
+      final events = recordEvents(queue);
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing) {
+          queue.cancelById(queue.items().first.id);
+        }
+      });
+      queue
+        ..add(1)
+        ..add(2)
+        ..start();
+      await queue.running;
+
+      expect(handled, [2]);
+      expect(statuses(queue), ['1:canceled', '2:completed']);
+      expect(events, isNot(contains('itemStatusUpdated:1:processing')));
+    });
+
+    test('to stop the queue when processing starts', () async {
+      final handled = <int>[];
+      final queue = QueueIt<int>(itemHandler: (item) => handled.add(item.data));
+      addTearDown(queue.dispose);
+      final events = recordEvents(queue);
+      var stopped = false;
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing && !stopped) {
+          stopped = true;
+          queue.stop();
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(handled, isEmpty);
+      expect(statuses(queue), ['1:pending']);
+      expect(events, [
+        'itemAdded:1:pending',
+        'startedQueue',
+        'startedProcessing',
+        'stoppedQueue',
+        'stoppedProcessing',
+      ]);
+
+      queue.start();
+      await queue.running;
+      expect(handled, [1]);
+    });
+
     test('to stop and dispose the queue', () async {
       final queue = QueueIt<int>(itemHandler: (item) {});
       final events = recordEvents(queue);

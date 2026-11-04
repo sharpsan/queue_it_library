@@ -472,7 +472,7 @@ class QueueIt<T> {
   /// stops it if it stops automatically, and completes [running] once a
   /// stopped queue's last handler has returned.
   void _checkIdle() {
-    if (_runningHandlers > 0) return;
+    if (_isDisposed || _runningHandlers > 0) return;
     if (_isStarted && (_retryTimers.isNotEmpty || _hasWaitingItem())) return;
     if (_isProcessing) {
       _isProcessing = false;
@@ -494,8 +494,18 @@ class QueueIt<T> {
       _lastStartedProcessingAt = DateTime.now();
       _sendOnUpdateEvent(QueueEvent.startedProcessing, null);
     }
-    item.status = QueueItemStatus.processing;
-    _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+    // Listeners can stop the queue, or cancel or remove the item, before its
+    // handler starts.
+    if (_isStarted && item.status == QueueItemStatus.pending) {
+      item.status = QueueItemStatus.processing;
+      _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+    } else if (item.status == QueueItemStatus.pending) {
+      _waiting.addFirst(item);
+    }
+    if (item.status != QueueItemStatus.processing) {
+      _runningHandlers--;
+      return;
+    }
 
     Object? error;
     StackTrace? stackTrace;
@@ -574,6 +584,8 @@ class QueueIt<T> {
 
     item.status = QueueItemStatus.pending;
     _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
+    // A listener canceled or removed it.
+    if (item.status != QueueItemStatus.pending) return;
     if (delay <= Duration.zero) {
       _waiting.addFirst(item);
     } else {
