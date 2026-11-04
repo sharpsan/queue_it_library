@@ -30,3 +30,18 @@ activated globally (`dart pub global activate melos`), drop the `dart run`.
 
 The packages themselves support Dart 3.5 and Flutter 3.24. CI checks that by taking them out of
 the workspace with `tool/leave_workspace.sh` and testing them on Flutter 3.24.5.
+
+## Releasing
+
+Pushing a tag publishes a package to pub.dev from GitHub Actions: `queue_it-v0.10.0` publishes
+queue_it 0.10.0 and `flutter_queue_it-v0.10.0` publishes flutter_queue_it 0.10.0. The tag has to
+match the version in the package's `pubspec.yaml`. The workflow tests the package and does a dry
+run, then waits for approval in the `pub.dev` environment before it publishes.
+
+```sh
+git tag queue_it-v0.10.0
+git push origin queue_it-v0.10.0
+```
+
+When flutter_queue_it needs a new queue_it, publish queue_it first. flutter_queue_it's run fails
+until that queue_it is on pub.dev, and can be re-run once it is.

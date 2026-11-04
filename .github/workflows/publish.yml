@@ -1,0 +1,89 @@
+name: Publish
+
+# Pushing a release tag publishes that package to pub.dev: queue_it-v0.10.0 publishes queue_it
+# 0.10.0 and flutter_queue_it-v0.10.0 publishes flutter_queue_it 0.10.0. The tag has to match
+# the version in the package's pubspec.yaml, and these patterns have to match the tag patterns
+# set on each package's admin page on pub.dev.
+on:
+  push:
+    tags:
+      - 'queue_it-v[0-9]+.[0-9]+.[0-9]+*'
+      - 'flutter_queue_it-v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the release
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.tag.outputs.package }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Match the tag to the package version
+        id: tag
+        run: |
+          package="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          pubspec_version="$(sed -n 's/^version: *//p' "$package/pubspec.yaml")"
+          if [ "$version" != "$pubspec_version" ]; then
+            echo "::error::$GITHUB_REF_NAME is for $package $version, but $package/pubspec.yaml has version $pubspec_version."
+            exit 1
+          fi
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Resolves the package on its own, the way it resolves for users. flutter_queue_it fails
+      # here until the queue_it it needs is on pub.dev: publish that first, then re-run this.
+      - name: Check the dependencies are on pub.dev
+        env:
+          PACKAGE: ${{ steps.tag.outputs.package }}
+        run: |
+          mkdir "$RUNNER_TEMP/resolve"
+          sed '/^resolution: workspace$/d' "$PACKAGE/pubspec.yaml" > "$RUNNER_TEMP/resolve/pubspec.yaml"
+          cd "$RUNNER_TEMP/resolve"
+          flutter pub get
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Test
+        working-directory: ${{ steps.tag.outputs.package }}
+        run: flutter test
+
+      - name: Check publishing
+        working-directory: ${{ steps.tag.outputs.package }}
+        run: flutter pub publish --dry-run
+
+  publish:
+    name: Publish to pub.dev
+    needs: check
+    runs-on: ubuntu-latest
+    # Publishing waits for a reviewer to approve the deployment.
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write # pub.dev authenticates the run with GitHub's OIDC token
+    steps:
+      - uses: actions/checkout@v7
+
+      # Creates the pub.dev token from the OIDC token. Flutter's dart uses it too.
+      - uses: dart-lang/setup-dart@v1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Publish
+        working-directory: ${{ needs.check.outputs.package }}
+        run: flutter pub publish --force
