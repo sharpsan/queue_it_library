@@ -1,174 +1,252 @@
-# queue_it
+# QueueIt
 
 [![Pub Version](https://img.shields.io/pub/v/queue_it?label=queue_it)](https://pub.dev/packages/queue_it)
 [![codecov](https://codecov.io/gh/sharpsan/queue_it_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/queue_it_library)
 
-Queue up work and process it a few items at a time, with retries, item statuses and a stream of
-snapshots you can show in a UI.
+QueueIt is designed to simplify the process of managing and processing queues in your Flutter and Dart
+applications.
 
-- **Parallel processing**: up to `parallel` items at once, in the order they were added.
-- **Retries**: retry failed items, after a delay if you like, and keep the error of the last
-  attempt.
-- **Statuses**: every item is pending, processing, completed, failed, canceled or removed, with
-  the time it got there.
-- **Snapshots**: listen to every change, with the queue's state and progress.
-- **Flutter**: [flutter_queue_it](https://pub.dev/packages/flutter_queue_it) rebuilds widgets when
-  the queue changes.
+## Features
 
-## Install
+- Queue management: Easily add, remove, cancel, and process items in a queue.
+- Event listeners: Listen for updates to the queue and receive snapshots.
+- Concurrency: Control the number of items processed simultaneously.
+- Retries: Automatically retry failed items, with an optional delay between attempts.
+- Item statuses: See where each item is at, when it got there, and why it failed.
+- Waiting: Wait for a single item, or the whole queue, to finish.
+
+## Getting started
 
 ```sh
 dart pub add queue_it
 ```
 
-It needs Dart 3.5 or later.
+QueueIt requires Dart 3.5 or later.
 
-## Quick start
+## Usage
+
+Here's a basic example of how to use QueueIt:
 
 ```dart
 // lib/main.dart
 import 'package:queue_it/queue_it.dart';
 
 Future<void> main() async {
-  final queue = QueueIt<String>(
-    parallel: 2,
-    retries: 2,
+  final queue = QueueIt<int>(
+    parallel: 1,
+    retries: 3,
     itemHandler: (item) async {
-      // Do the work for item.data here, such as downloading a file.
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      print('Handling item: ${item.data}');
+
+      /// Fake processing time
+      await Future<void>.delayed(const Duration(seconds: 1));
     },
   );
   queue.onUpdate.listen((snapshot) {
-    final item = snapshot.eventItem;
-    print(item == null
-        ? snapshot.event.name
-        : '${item.data}: ${item.status.name}');
+    print('Queue updated: ${snapshot.event.name}');
   });
 
-  for (final file in ['a.txt', 'b.txt', 'c.txt']) {
-    queue.add(file);
-  }
-  queue.start();
-  await queue.running;
+  /// Add some items to the queue
+  queue.add(1);
+  queue.add(2);
+  queue.add(3);
 
-  print(queue.items().summary);
+  /// Start processing the queue
+  queue.start();
+
+  /// You can continue adding more items to the queue after it starts processing
+  queue.add(4);
+  queue.add(5);
+
+  /// Wait for every item to be processed
+  await queue.running;
   queue.dispose();
 }
 ```
 
-## Processing
+For Flutter projects you will want to use [flutter_queue_it](https://pub.dev/packages/flutter_queue_it), which listens to queue changes and rebuilds your widget tree:
 
-- `start()` processes the pending items, oldest first, `parallel` at a time. Items added while the
-  queue is started are processed when their turn comes.
-- By default, the queue stops by itself once it has processed every item, and items added after
-  that wait for the next `start()`. A queue started with no items waits for its first one.
-  `start(stopAutomatically: false)` keeps the queue waiting for items until you call `stop()`.
-- `stop()` keeps the queue from starting more items. Items being processed finish; pending items
-  wait for the next `start()`.
-- `running` is a future that completes when the queue has stopped and the items it was processing
-  have finished.
-- `isStarted` says whether the queue is started, and `isProcessing` whether it's working through
-  items.
+```dart
+QueueItWidget(
+  queue: _queue,
+  builder: (context, snapshot) {
+    /// `builder` will be called each time the queue updates
+    final items = _queue.items().toList();
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return ListTile(
+          title: Text('Item status: ${item.status.name}'),
+        );
+      },
+    );
+  },
+);
+```
 
-## Item statuses
+### Starting and stopping
 
-| Status | Meaning |
-|---|---|
-| `pending` | Waiting to be processed, for the first time or for a retry. |
-| `processing` | The item handler is running. |
-| `completed` | The handler returned. |
-| `failed` | The handler threw, and no retries are left. |
-| `canceled` | Canceled by `cancel`, `cancelById` or `cancelAll`. |
-| `removed` | Removed by `remove`, `removeById` or `removeAll`, so no longer in the queue. |
+`start()` processes items in the order they were added, `parallel` at a time. By default the queue
+stops by itself once every item is processed, and items added after that wait for the next
+`start()`. If you start a queue with no items, it waits for its first one.
 
-Each item records when it got to each status: `queuedAt`, `startedProcessingAt`, `completedAt`,
-`failedAt`, `canceledAt` and `removedAt`. `queue.items()` lists the items in the order they were
-added, and `.pending`, `.processing`, `.completed`, `.failed`, `.canceled`, `.progress` and
-`.summary` work on any list of items.
+```dart
+/// Keep the queue running, so items added later are processed right away
+queue.start(stopAutomatically: false);
 
-## Retries and errors
+/// Stop starting new items. Items being processed will finish, and pending items
+/// wait for the next `start()`
+queue.stop();
 
-When the handler throws, the item is retried up to `retries` times, first in line. Each failed
-attempt shows as `failed` and then `pending` again. When no retries are left, the item stays
-`failed`, and `item.error` and `item.stackTrace` hold what the last attempt threw.
+/// Completes once the queue has stopped and its items have finished
+await queue.running;
+```
 
-`retryDelay` waits before each retry, without holding up the other items, and `retryIf` decides
-which errors are worth retrying:
+`queue.isStarted` tells you whether the queue is started, and `queue.isProcessing` whether it's
+working through items.
+
+### Item statuses
+
+Every item has a `status`:
+
+- `pending`: Waiting to be processed, for the first time or for a retry.
+- `processing`: The item handler is running.
+- `completed`: The item handler returned.
+- `failed`: The item handler threw, and there are no retries left.
+- `canceled`: Canceled with `cancel`, `cancelById` or `cancelAll`.
+- `removed`: Removed from the queue with `remove`, `removeById` or `removeAll`.
+
+Items also record when they got to each status (`queuedAt`, `startedProcessingAt`, `completedAt`,
+`failedAt`, `canceledAt` and `removedAt`), and any list of items has some helpers:
+
+```dart
+final items = queue.items();
+
+/// Items with a given status
+print(items.failed.length);
+
+/// How much of the work is done, from 0 to 1
+print(items.progress);
+
+/// A count of the items in each status
+print(items.summary);
+```
+
+### Retries
+
+When the item handler throws, the item is retried up to `retries` times, ahead of the other pending
+items. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
+tell you why.
 
 ```dart
 final queue = QueueIt<Uri>(
   retries: 3,
-  // Wait 1, 2, then 4 seconds.
+
+  /// Wait 1, 2, then 4 seconds before each retry. Other items keep
+  /// processing in the meantime
   retryDelay: (retry) => Duration(seconds: 1 << (retry - 1)),
-  // Bad input won't get better.
+
+  /// Only retry errors that might go away
   retryIf: (error) => error is! FormatException,
   itemHandler: (item) => download(item.data),
 );
 ```
 
-The handler can also choose what happens to the item when it returns by setting
-`item.nextStatus`, for example to process it again later.
+The item handler can also set `item.nextStatus` to choose what happens to the item when it returns,
+for example `QueueItemStatus.pending` to process it again later.
 
-## Canceling and removing
-
-`cancel(item)` stops a pending item from being processed. An item that's processing can't be
-interrupted, so its handler keeps running, but the queue ignores the outcome and doesn't retry it.
-A handler doing long work can check `item.status` to stop early.
-
-`remove(item)` does the same and also takes the item out of the queue. Both find the queue's item
-by id, so a copy works too, and both have `ById` and `All` versions.
-
-## Waiting for an item
-
-`waitFor` completes with a copy of the item once it's completed, failed with no retries left,
-canceled or removed:
+### Canceling and removing items
 
 ```dart
-final item = await queue.waitFor(queue.add('report.pdf'));
+final id = queue.add(6);
+
+/// The item won't be processed
+queue.cancelById(id);
+
+/// Same as canceling, and the item is also taken out of the queue
+queue.removeById(id);
+```
+
+An item that's already processing can't be interrupted, so its handler keeps running, but QueueIt
+ignores the result and won't retry it. If your handler does a lot of work, it can check
+`item.status` to stop early. `cancel` and `remove` take an item instead of an id, including the
+copies you get in snapshots, and `cancelAll` and `removeAll` work on every item.
+
+### Waiting for an item
+
+`waitFor` completes with a copy of the item once it's completed, canceled or removed, or failed
+with no retries left:
+
+```dart
+final item = await queue.waitFor(queue.add(7));
 if (item.status == QueueItemStatus.failed) {
-  print('report.pdf failed: ${item.error}');
+  print('Item failed: ${item.error}');
 }
 ```
 
-## Listening
+### Listening for updates
 
-`onUpdate` is a broadcast stream with a `QueueSnapshot` for every change, sent synchronously:
-
-- `event` says what happened, such as `itemAdded` or `stoppedProcessing`.
-- `eventItem` is a copy of the item involved, taken at that moment.
-- `isStarted`, `isProcessing` and the queue's start and stop times are as they were at the event.
-- `items` holds the current batch. These are the queue's live items, which keep changing, unless
-  the queue was created with `deepCopyItemsInSnapshot: true`. Copying costs time on every event,
-  more so for big batches.
-
-Listeners can call the queue. For example, to stop the queue at the first failure:
+`onUpdate` sends a `QueueSnapshot` every time the queue changes:
 
 ```dart
 queue.onUpdate.listen((snapshot) {
-  if (snapshot.eventItem?.status == QueueItemStatus.failed) queue.stop();
+  /// What happened, such as `itemAdded` or `stoppedProcessing`
+  print(snapshot.event.name);
+
+  /// A copy of the item the update is about, if there is one
+  final item = snapshot.eventItem;
+
+  /// You can call the queue from a listener, like stopping at the first failure
+  if (item?.status == QueueItemStatus.failed) queue.stop();
 });
 ```
 
-Every failed attempt sends a `failed` status, including ones that will be retried.
+Every failed attempt sends a `failed` update, including the ones that will be retried.
 
-## Batches
+`snapshot.items` holds the items of the current batch. These are the queue's own items, so they keep
+changing after the update. If you need them as they were at the time, create the queue with
+`deepCopyItemsInSnapshot: true`, but copying them costs time on every update, especially for big
+batches.
 
-Items added while the queue has unfinished items share a batch id, `item.batchId`. Once every item
-has finished, the next item added starts a new batch. `queue.currentBatchItems` and each snapshot's
-`items` hold the current batch, `queue.items()` holds every item, and `queue.items(batchId)` holds
-one batch. Finished items stay in the queue until you remove them.
+### Batches
 
-## Ids
+Items added while the queue still has unfinished items share a `batchId`. Once every item has
+finished, the next item you add starts a new batch. `queue.currentBatchItems` gives you the current
+batch, `queue.items()` every item, and `queue.items(batchId)` a single batch. Finished items stay in
+the queue until you remove them.
 
-Items get a UUID, or the id you pass to `add`, which must be unique in the queue.
-`useFriendlyIds: true` gives readable ids such as `big wizard cat` instead.
+### Item ids
 
-## Disposing
+`add` returns the item's id. It's a UUID, unless you pass your own with `queue.add(data, id: 'my-id')`.
+Ids must be unique within the queue. Set `useFriendlyIds: true` for readable ids like
+`big wizard cat`.
+
+### Disposing
 
 Call `dispose()` when you're done with a queue. It stops the queue and closes `onUpdate`. Handlers
-that are running aren't interrupted, but the queue ignores their outcome.
+that are still running aren't interrupted, but their results are ignored.
+
+For a more in-depth look at how to use QueueIt, check out the
+[example project](https://pub.dev/packages/queue_it/example).
+
+## Migrating from 0.9
+
+- Items that run out of retries are now `failed` instead of `canceled`, and `item.error` and
+  `item.stackTrace` hold the last error. If you looked for canceled items to find failures, look
+  for failed ones instead.
+- `add` throws an `ArgumentError` if the queue already has an item with that id. Use `hasItemById`
+  to check first.
+- `add` and `start` throw a `StateError` once the queue is disposed.
+- `cancel` only cancels pending and processing items, and returns `false` for items that have
+  already finished.
+- A new batch starts as soon as every item has finished, instead of only when the queue is empty.
+- Canceled and removed items now stay that way, even if they were processing at the time.
+- `onUpdate` listeners can now call the queue. If you delayed those calls to get around the
+  `Cannot fire new event` error, you don't need to anymore.
+- `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is deprecated.
+- QueueIt now requires Dart 3.5 or later.
 
 ## License
 
-queue_it is licensed under the
-[MIT License](https://github.com/sharpsan/queue_it_library/blob/main/queue_it/LICENSE).
+QueueIt is licensed under the [MIT License](https://github.com/sharpsan/queue_it_library/blob/main/queue_it/LICENSE).

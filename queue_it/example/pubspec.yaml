@@ -9,7 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  queue_it: ^0.11.0
+  queue_it: ^0.10.0
 
 dev_dependencies:
   lints: ^6.1.0

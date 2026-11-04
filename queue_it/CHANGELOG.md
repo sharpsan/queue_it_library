@@ -1,11 +1,13 @@
-## 0.11.0
+## 0.10.0
 
-* BREAKING: an item whose retries run out is now `failed`, not `canceled`, and keeps the error in
-  `QueueItem.error` and `QueueItem.stackTrace`.
-* BREAKING: `add` throws an `ArgumentError` for an id the queue already has, and `add` and `start`
-  throw a `StateError` once the queue is disposed.
-* BREAKING: `cancel` only cancels pending and processing items, and returns false for the rest.
-* BREAKING: a new batch starts when an item is added after every item has finished, as
+* Requires Dart 3.5 or later.
+* BREAKING CHANGE: an item whose retries run out is now `failed`, not `canceled`, and keeps the
+  error in `QueueItem.error` and `QueueItem.stackTrace`.
+* BREAKING CHANGE: `add` throws an `ArgumentError` for an id the queue already has, and `add` and
+  `start` throw a `StateError` once the queue is disposed.
+* BREAKING CHANGE: `cancel` only cancels pending and processing items, and returns false for the
+  rest.
+* BREAKING CHANGE: a new batch starts when an item is added after every item has finished, as
   `QueueItem.batchId` always said, instead of only when the queue is empty.
 * Fix: canceling an item while it's processing no longer gets overwritten when its handler
   returns, and a canceled item is no longer retried.
@@ -21,17 +23,14 @@
 * Fix: `nextStatus = processing` fails the item instead of leaving the queue running forever, and
   `nextStatus = canceled` sends one event instead of two.
 * Fix: processing time no longer grows with the number of finished items in the queue.
+* Fix: the README's link to flutter_queue_it.
 * Add: `retryDelay` and `retryIf`.
 * Add: `waitFor(id)`, which completes when an item finishes.
 * Add: the `canceled` extension getter; `cancelled` is deprecated, and so is the unused
   `OnUpdateCallback`.
-* Docs: the whole API is documented.
-
-## 0.10.0
-
-* Requires Dart 3.5 or later.
-* Added pub.dev topics.
-* Fixed the README's link to flutter_queue_it.
+* Add: pub.dev topics.
+* Docs: the whole API is documented, and the README covers more of the queue, with a section on
+  migrating from 0.9.
 
 ## 0.9.0
 

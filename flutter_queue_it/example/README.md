@@ -1,24 +1,20 @@
 # flutter_queue_it example
 
-An image downloader built with `QueueItWidget` and `QueueItListener`. Each item is the URL of a
-random image from [Lorem Picsum](https://picsum.photos). The queue downloads three images at a
-time and gives items readable ids instead of UUIDs. To show retries, about a third of the attempts
-fail on purpose: a failed download is retried twice, after one and then two seconds.
+An image downloader built with `QueueItWidget` and `QueueItListener`. It downloads random images
+from [Lorem Picsum](https://picsum.photos), three at a time.
 
-The screen shows:
+To show off retries, about a third of the downloads fail on purpose. A failed download is retried
+twice, after waiting 1 and then 2 seconds, and you get a message if it still fails.
 
-- a progress bar for the current batch while the queue is processing,
-- each image with its status, its retries and its last error,
-- a button that starts the queue and stops it,
-- a button that adds five images,
-- a button that removes the finished images,
-- a message when an image runs out of retries.
+You can:
 
-Tap the cross on a waiting or downloading image to cancel it, or swipe an image away to remove it
-from the queue. The start and stop button uses `buildWhen` to rebuild only when the queue starts
-or stops.
+- Add five images at a time.
+- Start and stop the queue.
+- Cancel a waiting or downloading image by tapping its cross.
+- Swipe an image away to remove it from the queue.
+- Remove all the finished images.
 
-## Run it
+### Running the example
 
 From this folder:
 
@@ -26,4 +22,5 @@ From this folder:
 flutter run
 ```
 
-The code is in [lib/main.dart](lib/main.dart).
+Check out [lib/main.dart](https://github.com/sharpsan/queue_it_library/blob/main/flutter_queue_it/example/lib/main.dart)
+to see how it works.

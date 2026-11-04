@@ -12,7 +12,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  flutter_queue_it: ^0.11.0
+  flutter_queue_it: ^0.10.0
   http: ^1.6.0
 dev_dependencies:
   flutter_test:
