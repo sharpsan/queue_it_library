@@ -102,6 +102,30 @@ void main() {
     ]);
   });
 
+  test('does nothing when started while started', () async {
+    final handled = <int>[];
+    final queue = QueueIt<int>(itemHandler: (item) async {
+      handled.add(item.data);
+      await wait();
+    });
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+    await wait();
+    queue
+      ..start()
+      ..start(stopAutomatically: false);
+    await queue.running;
+
+    expect(handled, [1, 2]);
+    expect(events.where((event) => event == 'startedQueue'), hasLength(1));
+    // The first start's stopAutomatically still applies.
+    expect(queue.isStarted, isFalse);
+  });
+
   test('records the times in order', () async {
     final queue = QueueIt<int>(parallel: 2, itemHandler: (item) => wait(1));
     addTearDown(queue.dispose);

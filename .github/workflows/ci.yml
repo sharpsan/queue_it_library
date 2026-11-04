@@ -47,6 +47,12 @@ jobs:
         working-directory: flutter_queue_it
         run: flutter test --coverage
 
+      # Drives each example the way a user would, without network access.
+      - name: Test the examples
+        run: |
+          (cd queue_it/example && dart test)
+          (cd flutter_queue_it/example && flutter test)
+
       - name: Upload coverage
         uses: codecov/codecov-action@v7
         with:

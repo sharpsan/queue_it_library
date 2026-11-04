@@ -17,6 +17,10 @@ void main() {
       expect(queue.hasItemById('two'), isTrue);
       expect(queue.hasItem(queue.items().first.copyWith()), isTrue);
       expect(queue.hasItemById('three'), isFalse);
+      expect(
+        QueueItem(data: 3, status: QueueItemStatus.pending, batchId: 'b').id,
+        matches(RegExp(r'^[0-9a-f-]{36}$')),
+      );
     });
 
     test('must be unique', () {
@@ -278,6 +282,8 @@ void main() {
       expect(items.progress, 1);
       expect(<QueueItem<int>>[].progress, 1);
       expect(items.summary, contains('Failed: 1'));
+      // ignore: deprecated_member_use_from_same_package
+      expect(items.cancelled, items.canceled);
     });
   });
 }
