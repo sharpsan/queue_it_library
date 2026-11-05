@@ -19,7 +19,8 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
         (item) => item.status == QueueItemStatus.completed,
       );
 
-  /// The items that failed with no retries left.
+  /// The items that failed with no retries left. During the `failed` update
+  /// of an attempt that will be retried, that item is here too.
   Iterable<QueueItem<T>> get failed => where(
         (item) => item.status == QueueItemStatus.failed,
       );
