@@ -43,4 +43,6 @@ and flutter_queue_it to pub.dev and creates a GitHub release with both changelog
 
 If something fails, fix it and push to `main` again: the tag of a version that isn't fully
 released moves to the new commit, and a package that's on pub.dev already isn't uploaded again.
-Publish can also be run by hand on a release tag from the Actions tab.
+Publish can also be run by hand on a release tag from the Actions tab. That's the way to retry
+when both packages made it to pub.dev but the GitHub release didn't, because pushing again does
+nothing once the version is on pub.dev.

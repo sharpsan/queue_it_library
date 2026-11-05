@@ -2,5 +2,7 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    # Changes go to dev, and main only takes releases.
+    target-branch: dev
     schedule:
       interval: monthly
