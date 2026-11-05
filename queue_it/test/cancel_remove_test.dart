@@ -206,6 +206,25 @@ void main() {
       }
       expect(removed.where((reference) => reference.target != null), isEmpty);
     });
+
+    test('takes about as long as adding, however many items there are', () {
+      // Removing items as they finish keeps a long-lived queue small.
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      const count = 50000;
+      final adding = Stopwatch()..start();
+      final ids = [for (var i = 0; i < count; i++) queue.add(i)];
+      adding.stop();
+
+      final removing = Stopwatch()..start();
+      ids.forEach(queue.removeById);
+      removing.stop();
+
+      expect(queue.items(), isEmpty);
+      // Before, each removal went through the list: about 100 times longer.
+      expect(removing.elapsedMicroseconds,
+          lessThan(adding.elapsedMicroseconds * 10 + 100000));
+    });
   });
 
   group('removeAll', () {

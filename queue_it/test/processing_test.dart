@@ -203,6 +203,13 @@ void main() {
     await queue.running;
   });
 
+  test('refuses a parallel below 1 and negative retries', () {
+    expect(() => QueueIt<int>(parallel: 0, itemHandler: (item) {}),
+        throwsArgumentError);
+    expect(() => QueueIt<int>(retries: -1, itemHandler: (item) {}),
+        throwsArgumentError);
+  });
+
   test('handles a long run of handlers that throw right away', () async {
     // Not async: the handler throws before returning a future.
     final queue = QueueIt<int>(

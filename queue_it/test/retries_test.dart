@@ -543,6 +543,41 @@ void main() {
       }
     });
 
+    test("retryDelay isn't called once retryIf has ended the item", () async {
+      for (final action in ['cancel', 'remove', 'dispose']) {
+        late QueueIt<int> queue;
+        final delays = <int>[];
+        queue = QueueIt<int>(
+          retries: 1,
+          retryIf: (error) {
+            switch (action) {
+              case 'cancel':
+                queue.cancelById('a');
+              case 'remove':
+                queue.removeById('a');
+              case 'dispose':
+                queue.dispose();
+            }
+            return true;
+          },
+          retryDelay: (retry) {
+            delays.add(retry);
+            return Duration.zero;
+          },
+          itemHandler: (item) => throw Exception('failed'),
+        );
+
+        queue
+          ..add(1, id: 'a')
+          ..start();
+        await queue.running;
+        await wait();
+
+        expect(delays, isEmpty, reason: action);
+        queue.dispose();
+      }
+    });
+
     test('an item added by retryIf joins the batch', () async {
       late QueueIt<int> queue;
       queue = QueueIt<int>(

@@ -37,6 +37,8 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
   /// The share of the items that have finished, from 0 to 1, rounded to two
   /// decimal places. Items that are pending or processing haven't finished.
   /// It's 1 only when every item has finished, or when there are no items.
+  /// During the `failed` update of an attempt that will be retried, that item
+  /// counts as finished.
   double get progress {
     if (isEmpty) return 1;
     final inProgressTotal = processing.length + pending.length;

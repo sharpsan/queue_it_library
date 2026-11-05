@@ -52,7 +52,10 @@ class QueueItem<T> {
   ///   remove the item.
   /// - [QueueItemStatus.pending] to process the item again, after the items
   ///   already waiting. This isn't limited by the queue's retries, but it adds
-  ///   to [retryCount], which leaves fewer retries for failures.
+  ///   to [retryCount], which leaves fewer retries for failures. The next
+  ///   attempt can come before timers and I/O get to run, so to wait for
+  ///   something, await it (for example a `Future.delayed`) before
+  ///   returning.
   ///
   /// [QueueItemStatus.processing] isn't allowed: the attempt fails with a
   /// [StateError].

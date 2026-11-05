@@ -44,6 +44,9 @@ import 'package:uuid/uuid.dart';
 /// Call [dispose] when you're done with the queue.
 class QueueIt<T> {
   /// Creates a queue that processes items with [itemHandler].
+  ///
+  /// Throws an [ArgumentError] if [parallel] is less than 1 or [retries] is
+  /// negative.
   QueueIt({
     required this.itemHandler,
     this.retries = 0,
@@ -52,20 +55,27 @@ class QueueIt<T> {
     this.parallel = 1,
     this.useFriendlyIds = false,
     this.deepCopyItemsInSnapshot = false,
-  })  : assert(parallel > 0, 'Parallel must be greater than 0'),
-        assert(retries >= 0, 'Retries must not be negative');
+  }) {
+    if (parallel < 1) {
+      throw ArgumentError.value(parallel, 'parallel', 'Must be at least 1');
+    }
+    if (retries < 0) {
+      throw ArgumentError.value(retries, 'retries', 'Must not be negative');
+    }
+  }
 
-  /// Every item in the queue, in the order they were added.
-  final _items = <QueueItem<T>>[];
-  final _itemsById = <String, QueueItem<T>>{};
+  /// Every item in the queue, in the order they were added, and each one's
+  /// place in it by id. Removing an item takes it out at once.
+  final _items = LinkedList<_ItemEntry<T>>();
+  final _itemsById = <String, _ItemEntry<T>>{};
 
   /// The items waiting to be processed, in order, and each one's place in it.
   /// Items leave it as soon as they're canceled or removed.
   final _waiting = LinkedList<_WaitingItem<T>>();
   final _waitingEntries = <QueueItem<T>, _WaitingItem<T>>{};
 
-  /// The items whose handler is running, or whose outcome is being applied,
-  /// including items canceled or removed since the handler started.
+  /// The items whose handler is running or about to start, or whose outcome
+  /// is being applied, including items canceled or removed since then.
   final _runningItems = <QueueItem<T>>{};
 
   /// The items in the `failed` event of an attempt that will be retried.
@@ -86,10 +96,10 @@ class QueueIt<T> {
 
   var _currentBatchId = const Uuid().v4();
 
-  /// Where the current batch starts in [_items]. Items are only added at the
-  /// end, and a batch only starts once every item has finished, so the
-  /// current batch is the end of the list.
-  var _batchStart = 0;
+  /// The first item of the current batch in [_items], or null if it has
+  /// none left. Items are only added at the end, and a batch only starts once
+  /// every item has finished, so the current batch is the end of the list.
+  _ItemEntry<T>? _batchStart;
   var _isStarted = false;
   var _isProcessing = false;
   var _stopAutomatically = true;
@@ -188,7 +198,7 @@ class QueueIt<T> {
   /// These are the queue's live items, in a lazy view of its list: copy it
   /// with `toList()` before changing the queue while iterating it.
   Iterable<QueueItem<T>> items([String? batchId]) => batchId == null
-      ? _items.where((item) => true)
+      ? _items.map((entry) => entry.item)
       : _BatchItems(this, batchId);
 
   /// A snapshot of the queue for every change, sent synchronously.
@@ -255,6 +265,8 @@ class QueueIt<T> {
   /// Whether the queue has an item with [id].
   bool hasItemById(String id) => _itemsById.containsKey(id);
 
+  QueueItem<T>? _itemById(String id) => _itemsById[id]?.item;
+
   /// Adds an item with [data] to the end of the queue and returns its id.
   ///
   /// Without an [id], the item gets a UUID, or a readable phrase if
@@ -271,7 +283,7 @@ class QueueIt<T> {
     }
     if (!_hasUnfinishedItems()) {
       _currentBatchId = const Uuid().v4();
-      _batchStart = _items.length;
+      _batchStart = null;
     }
 
     final item = QueueItem(
@@ -280,8 +292,10 @@ class QueueIt<T> {
       batchId: _currentBatchId,
       id: id ?? _newId(),
     );
-    _items.add(item);
-    _itemsById[item.id] = item;
+    final entry = _ItemEntry(item);
+    _items.add(entry);
+    _itemsById[item.id] = entry;
+    _batchStart ??= entry;
     _enqueue(item);
     if (_isStarted) _hasHadItems = true;
     _sendOnUpdateEvent(QueueEvent.itemAdded, item);
@@ -298,7 +312,7 @@ class QueueIt<T> {
 
   /// Removes the item with [id]. Returns whether there was one. See [remove].
   bool removeById(String id) {
-    final item = _itemsById[id];
+    final item = _itemById(id);
     if (item == null) return false;
     _remove(item);
     _schedulePump();
@@ -308,9 +322,9 @@ class QueueIt<T> {
   /// Removes all items, as [remove] does, and sends one
   /// [QueueEvent.removedAll] event.
   void removeAll() {
-    final removed = List.of(_items);
+    final removed = items().toList();
     _items.clear();
-    _batchStart = 0;
+    _batchStart = null;
     _itemsById.clear();
     _waiting.clear();
     _waitingEntries.clear();
@@ -341,7 +355,7 @@ class QueueIt<T> {
   /// Cancels the item with [id]. Returns whether it was canceled. See
   /// [cancel].
   bool cancelById(String id) {
-    final item = _itemsById[id];
+    final item = _itemById(id);
     if (item == null || !_cancel(item)) return false;
     _notifyWaiters(item);
     _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
@@ -353,8 +367,8 @@ class QueueIt<T> {
   /// one [QueueEvent.cancelledAll] event.
   void cancelAll() {
     final canceled = <QueueItem<T>>[];
-    for (final item in _items) {
-      if (_cancel(item)) canceled.add(item);
+    for (final entry in _items) {
+      if (_cancel(entry.item)) canceled.add(entry.item);
     }
     canceled.forEach(_notifyWaiters);
     _sendOnUpdateEvent(QueueEvent.cancelledAll, null);
@@ -372,7 +386,7 @@ class QueueIt<T> {
   /// with [id], and with a [StateError] if the queue is disposed before the
   /// item finishes.
   Future<QueueItem<T>> waitFor(String id) {
-    final item = _itemsById[id];
+    final item = _itemById(id);
     if (item == null) {
       return Future.error(
           ArgumentError.value(id, 'id', 'The queue has no item with this id'));
@@ -409,7 +423,8 @@ class QueueIt<T> {
     _waiters.clear();
     final running = _running;
     if (running != null && !running.isCompleted) running.complete();
-    // A listener that disposes the queue is closed once the event reaches every listener.
+    // When a listener disposes the queue, the stream closes once the events
+    // queued until then have reached every listener.
     if (!_isSendingSnapshots) _onUpdateStreamController.close();
   }
 
@@ -419,7 +434,7 @@ class QueueIt<T> {
     s.writeln('Started: $_isStarted');
     s.writeln('Processing: $_isProcessing');
     s.writeln('Current Batch Id: $_currentBatchId');
-    s.writeln('Items: ${_items.map((e) => e.data).toList()}');
+    s.writeln('Items: ${items().map((e) => e.data).toList()}');
     s.writeln('Started At: $_lastStartedAt');
     s.writeln('Started Processing At: $_lastStartedProcessingAt');
     s.writeln('Stopped Processing At: $_lastStoppedProcessingAt');
@@ -502,10 +517,9 @@ class QueueIt<T> {
   }
 
   void _remove(QueueItem<T> item) {
-    _itemsById.remove(item.id);
-    final index = _items.indexOf(item);
-    _items.removeAt(index);
-    if (index < _batchStart) _batchStart--;
+    final entry = _itemsById.remove(item.id)!;
+    if (identical(entry, _batchStart)) _batchStart = entry.next;
+    entry.unlink();
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
@@ -708,6 +722,10 @@ class QueueIt<T> {
     if (item.retryCount >= retries) return null;
     try {
       if (error != null && !(retryIf?.call(error) ?? true)) return null;
+      // retryIf canceled or removed the item, or disposed the queue.
+      if (_isDisposing || item.status != QueueItemStatus.processing) {
+        return null;
+      }
       return retryDelay?.call(item.retryCount + 1) ?? Duration.zero;
     } catch (e, s) {
       Zone.current.handleUncaughtError(e, s);
@@ -720,7 +738,11 @@ class QueueIt<T> {
     QueueEvent event,
     QueueItem<T>? item,
   ) {
-    if (!_onUpdateStreamController.hasListener) return;
+    // A paused subscription keeps hasListener true after the stream closes.
+    if (_onUpdateStreamController.isClosed ||
+        !_onUpdateStreamController.hasListener) {
+      return;
+    }
     _unsentSnapshots.add(
       QueueSnapshot(
         event: event,
@@ -754,6 +776,13 @@ class QueueIt<T> {
   }
 }
 
+/// An item's place among the queue's items.
+final class _ItemEntry<T> extends LinkedListEntry<_ItemEntry<T>> {
+  _ItemEntry(this.item);
+
+  final QueueItem<T> item;
+}
+
 /// An item's place among the waiting items.
 final class _WaitingItem<T> extends LinkedListEntry<_WaitingItem<T>> {
   _WaitingItem(this.item);
@@ -772,10 +801,15 @@ class _BatchItems<T> extends Iterable<QueueItem<T>> {
 
   @override
   Iterator<QueueItem<T>> get iterator {
-    final start = _batchId == _queue._currentBatchId ? _queue._batchStart : 0;
-    return _queue._items
-        .skip(start)
-        .where((item) => item.batchId == _batchId)
-        .iterator;
+    final items = _batchId == _queue._currentBatchId
+        ? _from(_queue._batchStart)
+        : _queue.items();
+    return items.where((item) => item.batchId == _batchId).iterator;
+  }
+
+  Iterable<QueueItem<T>> _from(_ItemEntry<T>? entry) sync* {
+    for (; entry != null; entry = entry.next) {
+      yield entry.item;
+    }
   }
 }

@@ -25,6 +25,12 @@
   processing.
 * Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
   listeners can't start the queue again.
+* Fix: removing items one at a time no longer slows down as the queue grows (80,000 items took
+  39 s; now well under a second).
+* Fix: calling the queue after `dispose` no longer throws while an `onUpdate` listener is paused,
+  for example by `asyncMap` or an `await for` loop that's awaiting.
+* Fix: the constructor throws an `ArgumentError` for a `parallel` below 1 or negative `retries`.
+  These were only asserts, so a release build with `parallel: 0` never processed anything.
 * Fix: a long run of items whose handler throws right away, without being `async`, no longer
   overflows the stack and leaves the queue stuck.
 * Fix: `summary` rounds the progress, and `progress` is only 1 once every item has finished,
@@ -34,7 +40,8 @@
 * Docs: an error thrown by `retryIf` or `retryDelay` is reported as an uncaught error, and the item
   isn't retried.
 * Docs: corrections about which statuses are final, what snapshots copy, what `retryDelay` is
-  called with, and what `summary` counts.
+  called with, and what `summary` counts. `nextStatus = pending` tries again before timers and I/O
+  get to run, so a handler waiting for something should await it first.
 
 ## 0.10.0
 
