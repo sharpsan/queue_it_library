@@ -1,3 +1,28 @@
+## 0.10.1
+
+* Fix: `waitFor` gives the item as it finished, even when a listener then removes the item or
+  disposes the queue, or adds a new item with the same id.
+* Fix: `waitFor` fails with a `StateError` when it's called after `dispose`, instead of never
+  completing.
+* Fix: in the `failed` update of an attempt that will be retried, `waitFor` waits for the retry,
+  and `cancel` cancels the item instead of returning false.
+* Fix: disposing the queue from a listener as an item fails no longer leaves its retry timer
+  running.
+* Fix: an item being retried stays in its batch when a listener adds an item during its `failed`
+  or `pending` update, and a canceled item whose handler is still running no longer keeps its
+  batch open.
+* Fix: removed items are let go right away, instead of staying in memory while the queue is
+  stopped.
+* Fix: an item added by a `stoppedProcessing` listener is processed, instead of waiting for the
+  next `start`.
+* Fix: a queue that stops automatically also stops when its items are all canceled or removed
+  before it gets to them, so `running` completes.
+* Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
+  listeners can't start the queue again.
+* Fix: `summary` rounds the progress.
+* Docs: an error thrown by `retryIf` or `retryDelay` is reported as an uncaught error, and the item
+  isn't retried.
+
 ## 0.10.0
 
 * Requires Dart 3.5 or later.

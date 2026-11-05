@@ -1,3 +1,16 @@
+## 0.10.1
+
+* Requires queue_it 0.10.1, which fixes `waitFor`, batches and `dispose` in a few cases where
+  listeners call the queue. See its changelog.
+* Fix: `QueueItWidget` no longer throws when the queue changes while Flutter is building, laying
+  out or disposing widgets, for example from a widget's `initState` or `dispose`. It rebuilds
+  right after that frame.
+* Fix: `QueueItListener` stops calling the listener as soon as it's being removed, so the listener
+  never gets a context it can't use.
+* Docs: the README's progress bar shows the current batch, and its "All uploads processed"
+  message no longer shows when the queue is stopped early.
+* Example: a canceled or removed image is no longer downloaded and shown anyway.
+
 ## 0.10.0
 
 * Requires Dart 3.5 and Flutter 3.24 or later. The previous Flutter minimum (1.17) was lower

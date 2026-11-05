@@ -1,6 +1,6 @@
 name: flutter_queue_it
 description: "Flutter integration for QueueIt. Provides a widget that automatically rebuilds when the queue is updated."
-version: 0.10.0
+version: 0.10.1
 repository: https://github.com/sharpsan/queue_it_library
 topics:
   - queue
@@ -17,7 +17,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  queue_it: ^0.10.0
+  queue_it: ^0.10.1
 
 dev_dependencies:
   flutter_test:
