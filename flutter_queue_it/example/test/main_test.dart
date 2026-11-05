@@ -172,6 +172,10 @@ void main() {
       await _pumpSnackBars(tester);
       await tester.tap(find.byTooltip('Stop the queue'));
       await tester.pump();
+
+      // The canceled and removed images' downloads keep going in the
+      // background, for up to 2 s. Let them finish.
+      await tester.pump(const Duration(seconds: 2));
     }, () => server.client);
   });
 }
