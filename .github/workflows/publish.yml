@@ -51,7 +51,8 @@ jobs:
           cache: true
 
       # Resolves the package on its own, the way it resolves for users. flutter_queue_it fails
-      # here until the queue_it it needs is on pub.dev.
+      # here until the queue_it it needs is on pub.dev. pub.dev caches its listings for up to
+      # two minutes, so a version published just before this run can take that long to show up.
       - name: Check the dependencies are on pub.dev
         env:
           PACKAGE: ${{ steps.tag.outputs.package }}
@@ -59,7 +60,15 @@ jobs:
           mkdir "$RUNNER_TEMP/resolve"
           sed '/^resolution: workspace$/d' "$PACKAGE/pubspec.yaml" > "$RUNNER_TEMP/resolve/pubspec.yaml"
           cd "$RUNNER_TEMP/resolve"
-          flutter pub get
+          tries=1
+          until flutter pub get; do
+            if [ "$tries" -ge 6 ]; then
+              exit 1
+            fi
+            tries=$((tries + 1))
+            echo "Trying again in 30 seconds."
+            sleep 30
+          done
 
       - name: Get dependencies
         run: flutter pub get
