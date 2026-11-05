@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:queue_it/queue_it.dart';
 import 'package:test/test.dart';
 
@@ -209,6 +211,161 @@ void main() {
       expect(attempts, 1);
       expect(statuses(queue), ['1:canceled']);
     });
+  });
+
+  test('lets waitFor called as an attempt fails wait for the retry', () async {
+    final queue = QueueIt<int>(
+      retries: 1,
+      itemHandler: (item) {
+        if (item.retryCount == 0) throw Exception('flaky');
+      },
+    );
+    addTearDown(queue.dispose);
+    final waited = <Future<QueueItem<int>>>[];
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed) {
+        waited.add(queue.waitFor(item!.id));
+      }
+    });
+
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    final item = await waited.single;
+    expect(item.status, QueueItemStatus.completed);
+    expect(item.retryCount, 1);
+  });
+
+  test('lets a listener cancel the retry as an attempt fails', () async {
+    var attempts = 0;
+    final queue = QueueIt<int>(
+      retries: 2,
+      itemHandler: (item) {
+        attempts++;
+        throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    final canceled = <bool>[];
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed) {
+        canceled.add(queue.cancel(item!));
+      }
+    });
+    final finished = queue.waitFor(queue.add(1));
+
+    queue.start();
+
+    expect((await finished).status, QueueItemStatus.canceled);
+    await queue.running;
+    expect(canceled, [true]);
+    expect(attempts, 1);
+    expect(events, [
+      'itemAdded:1:pending',
+      'startedQueue',
+      'startedProcessing',
+      'itemStatusUpdated:1:processing',
+      'itemStatusUpdated:1:failed',
+      'itemStatusUpdated:1:canceled',
+      'stoppedProcessing',
+      'stoppedQueue',
+    ]);
+  });
+
+  test("doesn't cancel an item whose last attempt failed", () async {
+    final queue = QueueIt<int>(
+      retries: 1,
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    final canceled = <bool>[];
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed && item!.retryCount == 1) {
+        canceled.add(queue.cancel(item));
+      }
+    });
+
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    expect(canceled, [false]);
+    expect(statuses(queue), ['1:failed']);
+  });
+
+  test('reports an error thrown by retryIf or retryDelay, and fails the item',
+      () async {
+    for (final callback in ['retryIf', 'retryDelay']) {
+      final errors = <Object>[];
+      late QueueItem<int> finished;
+      await runZonedGuarded(() async {
+        final queue = QueueIt<int>(
+          retries: 1,
+          retryIf: callback == 'retryIf'
+              ? (error) => throw StateError(callback)
+              : null,
+          retryDelay: callback == 'retryDelay'
+              ? (retry) => throw StateError(callback)
+              : null,
+          itemHandler: (item) => throw Exception('failed'),
+        );
+        final done = queue.waitFor(queue.add(1));
+        queue.start();
+        finished = await done;
+        await queue.running;
+        queue.dispose();
+      }, (error, stackTrace) => errors.add(error));
+
+      expect(finished.status, QueueItemStatus.failed, reason: callback);
+      expect(finished.retryCount, 0, reason: callback);
+      expect(errors, [isA<StateError>()], reason: callback);
+    }
+  });
+
+  test('leaves no retry timer when a listener disposes the queue', () async {
+    // Disposed as the attempt fails, or as its retry is queued.
+    for (final status in [QueueItemStatus.failed, QueueItemStatus.pending]) {
+      final timers = <Timer>[];
+      await runZoned(
+        () async {
+          final queue = QueueIt<int>(
+            retries: 1,
+            retryDelay: (retry) => const Duration(hours: 1),
+            itemHandler: (item) => throw Exception('failed'),
+          );
+          queue.onUpdate.listen((snapshot) {
+            final item = snapshot.eventItem;
+            if (item?.status == status && item?.startedProcessingAt != null) {
+              queue.dispose();
+            }
+          });
+          queue
+            ..add(1)
+            ..start();
+          await queue.running;
+        },
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, duration, callback) {
+            final timer = parent.createTimer(zone, duration, callback);
+            timers.add(timer);
+            return timer;
+          },
+        ),
+      );
+
+      expect(timers.where((timer) => timer.isActive), isEmpty,
+          reason: 'disposed in the ${status.name} event');
+      for (final timer in timers) {
+        timer.cancel();
+      }
+    }
   });
 
   test('drops waiting retries on removeAll and dispose', () async {

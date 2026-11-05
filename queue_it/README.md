@@ -88,8 +88,9 @@ QueueItWidget(
 ### Starting and stopping
 
 `start()` processes items in the order they were added, `parallel` at a time. By default the queue
-stops by itself once every item is processed, and items added after that wait for the next
-`start()`. If you start a queue with no items, it waits for its first one.
+stops by itself once it runs out of items, whether they were processed, canceled or removed, and
+items added after that wait for the next `start()`. If you start a queue with no items, it waits for
+its first one.
 
 ```dart
 /// Keep the queue running, so items added later are processed right away
@@ -154,7 +155,8 @@ final queue = QueueIt<Uri>(
 ```
 
 The item handler can also set `item.nextStatus` to choose what happens to the item when it returns,
-for example `QueueItemStatus.pending` to process it again later.
+for example `QueueItemStatus.pending` to process it again later. And a listener can cancel an item
+in its `failed` update, so it isn't retried.
 
 ### Canceling and removing items
 

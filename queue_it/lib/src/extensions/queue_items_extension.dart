@@ -54,7 +54,7 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
     s.writeln('Completed: ${completed.length}');
     s.writeln('Failed: ${failed.length}');
     s.writeln('Cancelled: ${canceled.length}');
-    s.writeln('Progress: ${progress * 100}%');
+    s.writeln('Progress: ${(progress * 100).round()}%');
     return s.toString();
   }
 }
