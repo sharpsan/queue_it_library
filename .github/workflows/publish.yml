@@ -1,14 +1,12 @@
 name: Publish
 
-# Pushing a release tag publishes that package to pub.dev: queue_it-v0.10.0 publishes queue_it
-# 0.10.0 and flutter_queue_it-v0.10.0 publishes flutter_queue_it 0.10.0. The tag has to match
-# the version in the package's pubspec.yaml, and these patterns have to match the tag patterns
-# set on each package's admin page on pub.dev.
+# Publishes a package to pub.dev from its release tag and creates its GitHub release:
+# queue_it-v0.10.0 is queue_it 0.10.0 and flutter_queue_it-v0.10.0 is flutter_queue_it 0.10.0.
+# The Release workflow creates the tags and runs this when main has a new version. It can also
+# be run by hand on a release tag. The tag has to match the version in the package's
+# pubspec.yaml, and the tag pattern set on the package's admin page on pub.dev.
 on:
-  push:
-    tags:
-      - 'queue_it-v[0-9]+.[0-9]+.[0-9]+*'
-      - 'flutter_queue_it-v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       package: ${{ steps.tag.outputs.package }}
+      version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -27,12 +26,24 @@ jobs:
         run: |
           package="${GITHUB_REF_NAME%-v*}"
           version="${GITHUB_REF_NAME##*-v}"
+          case "$GITHUB_REF_TYPE:$package" in
+            tag:queue_it | tag:flutter_queue_it) ;;
+            *)
+              echo "::error::Run this on a release tag, such as queue_it-v1.2.3, not the $GITHUB_REF_TYPE $GITHUB_REF_NAME."
+              exit 1
+              ;;
+          esac
           pubspec_version="$(sed -n 's/^version: *//p' "$package/pubspec.yaml")"
           if [ "$version" != "$pubspec_version" ]; then
             echo "::error::$GITHUB_REF_NAME is for $package $version, but $package/pubspec.yaml has version $pubspec_version."
             exit 1
           fi
+          if ! grep -qxF "## $version" "$package/CHANGELOG.md"; then
+            echo "::error::$package/CHANGELOG.md has no \"## $version\" section."
+            exit 1
+          fi
           echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -40,7 +51,7 @@ jobs:
           cache: true
 
       # Resolves the package on its own, the way it resolves for users. flutter_queue_it fails
-      # here until the queue_it it needs is on pub.dev: publish that first, then re-run this.
+      # here until the queue_it it needs is on pub.dev.
       - name: Check the dependencies are on pub.dev
         env:
           PACKAGE: ${{ steps.tag.outputs.package }}
@@ -65,7 +76,6 @@ jobs:
     name: Publish to pub.dev
     needs: check
     runs-on: ubuntu-latest
-    # Publishing waits for a reviewer to approve the deployment.
     environment: pub.dev
     permissions:
       contents: read
@@ -87,3 +97,34 @@ jobs:
       - name: Publish
         working-directory: ${{ needs.check.outputs.package }}
         run: flutter pub publish --force
+
+  github-release:
+    name: Create the GitHub release
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PACKAGE: ${{ needs.check.outputs.package }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The notes are the version's CHANGELOG entry.
+      - name: Create the release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "$GITHUB_REF_NAME has a release already."
+            exit 0
+          fi
+          awk -v heading="## $VERSION" '$0 == heading { on = 1; next } /^## / { on = 0 } on' \
+            "$PACKAGE/CHANGELOG.md" > "$RUNNER_TEMP/notes.md"
+          printf '\nhttps://pub.dev/packages/%s/versions/%s\n' "$PACKAGE" "$VERSION" >> "$RUNNER_TEMP/notes.md"
+          case "$VERSION" in
+            *-*) prerelease=--prerelease ;;
+            *) prerelease= ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$PACKAGE $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" $prerelease

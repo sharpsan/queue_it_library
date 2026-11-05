@@ -33,15 +33,13 @@ the workspace with `tool/leave_workspace.sh` and testing them on Flutter 3.24.5.
 
 ## Releasing
 
-Pushing a tag publishes a package to pub.dev from GitHub Actions: `queue_it-v0.10.0` publishes
-queue_it 0.10.0 and `flutter_queue_it-v0.10.0` publishes flutter_queue_it 0.10.0. The tag has to
-match the version in the package's `pubspec.yaml`. The workflow tests the package and does a dry
-run, then waits for approval in the `pub.dev` environment before it publishes.
+Pushing to `main` releases every package whose version isn't on pub.dev yet. To release one, bump
+the version in its `pubspec.yaml`, add a matching section to its `CHANGELOG.md` and push to `main`.
 
-```sh
-git tag queue_it-v0.10.0
-git push origin queue_it-v0.10.0
-```
+Once CI passes, the Release workflow tags the commit (`queue_it-v0.10.0`,
+`flutter_queue_it-v0.10.0`) and runs the Publish workflow on each tag, queue_it first. Publish
+tests the package, publishes it to pub.dev and creates a GitHub release from its changelog.
 
-When flutter_queue_it needs a new queue_it, publish queue_it first. flutter_queue_it's run fails
-until that queue_it is on pub.dev, and can be re-run once it is.
+If publishing fails, fix it and push to `main` again: a version that never made it to pub.dev
+gets its tag moved to the new commit. Publish can also be run by hand on a release tag from the
+Actions tab.
