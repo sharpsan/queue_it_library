@@ -1,17 +1,21 @@
 import 'package:queue_it/queue_it.dart';
 
-void main() {
-  final queue = QueueIt<int>(
-      parallel: 3,
-      retries: 3,
-      useFriendlyIds: true,
-      itemHandler: (item) async {
-        print('Handling item: ${item.id}');
-
-        /// Fake processing time
-        await Future.delayed(Duration(seconds: 1));
-      })
-    ..onUpdate.listen((snapshot) {
+/// Processes five downloads two at a time. The third fails twice before it
+/// works, and the program waits for it with `waitFor`.
+Future<void> main() async {
+  final queue = QueueIt<String>(
+    parallel: 2,
+    retries: 3,
+    retryDelay: (retry) => Duration(milliseconds: 200 * retry),
+    useFriendlyIds: true,
+    itemHandler: (item) async {
+      // Fake processing time.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (item.data == 'file-3.zip' && item.retryCount < 2) {
+        throw Exception('connection reset');
+      }
+    },
+  )..onUpdate.listen((snapshot) {
       if (snapshot.eventItem != null) {
         print(snapshot.eventItem!.summaryTableLine);
       } else {
@@ -19,15 +23,18 @@ void main() {
       }
     });
 
-  /// Add some items to the queue
-  queue.add(1);
-  queue.add(2);
-  queue.add(3);
+  final ids = [
+    for (var i = 1; i <= 5; i++) queue.add('file-$i.zip'),
+  ];
 
-  /// start processing the queue
+  /// Start processing the queue.
   queue.start();
 
-  /// You can continue adding more items to the queue after it starts processing
-  queue.add(4);
-  queue.add(5);
+  final third = await queue.waitFor(ids[2]);
+  print('file-3.zip is ${third.status.name} after ${third.retryCount} '
+      'retries; the last error was: ${third.error}');
+
+  await queue.running;
+  print(queue.items().summary);
+  queue.dispose();
 }

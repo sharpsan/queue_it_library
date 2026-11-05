@@ -1,16 +1,26 @@
-# example
+# flutter_queue_it example
 
-A new Flutter project.
+An image downloader built with `QueueItWidget` and `QueueItListener`. It downloads random images
+from [Lorem Picsum](https://picsum.photos), three at a time.
 
-## Getting Started
+To show off retries, about a third of the downloads fail on purpose. A failed download is retried
+twice, after waiting 1 and then 2 seconds, and you get a message if it still fails.
 
-This project is a starting point for a Flutter application.
+You can:
 
-A few resources to get you started if this is your first Flutter project:
+- Add five images at a time.
+- Start and stop the queue.
+- Cancel a waiting or downloading image by tapping its cross.
+- Swipe an image away to remove it from the queue.
+- Remove all the finished images.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Running the example
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+From this folder:
+
+```sh
+flutter run
+```
+
+Check out [lib/main.dart](https://github.com/sharpsan/queue_it_library/blob/main/flutter_queue_it/example/lib/main.dart)
+to see how it works.

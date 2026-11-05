@@ -4,14 +4,13 @@ version: 1.0.0
 publish_to: "none"
 
 environment:
-  sdk: ^3.3.0
+  sdk: ^3.5.0
+
+resolution: workspace
 
 dependencies:
-  queue_it: any
-
-dependency_overrides:
-  queue_it:
-    path: ../
+  queue_it: ^0.10.0
 
 dev_dependencies:
-  lints: ^4.0.0
+  lints: ^6.1.0
+  test: ^1.31.0

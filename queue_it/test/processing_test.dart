@@ -1,0 +1,309 @@
+import 'package:queue_it/queue_it.dart';
+import 'package:test/test.dart';
+
+import 'helpers.dart';
+
+void main() {
+  test('processes items in the order they were added', () async {
+    final processed = <int>[];
+    final queue = QueueIt<int>(itemHandler: (item) => processed.add(item.data));
+    addTearDown(queue.dispose);
+    for (var i = 0; i < 10; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await queue.running;
+
+    expect(processed, List.generate(10, (i) => i));
+  });
+
+  test('starts items in order when processing several at once', () async {
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(parallel: 3, itemHandler: gate.call);
+    addTearDown(queue.dispose);
+    for (var i = 0; i < 6; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await wait();
+    expect(gate.started, [0, 1, 2]);
+
+    gate.release(1);
+    await wait();
+    expect(gate.started, [0, 1, 2, 3]);
+  });
+
+  test('never processes more than parallel items at once', () async {
+    var running = 0, maxRunning = 0;
+    final queue = QueueIt<int>(
+      parallel: 2,
+      itemHandler: (item) async {
+        running++;
+        if (running > maxRunning) maxRunning = running;
+        await wait(5);
+        running--;
+      },
+    );
+    addTearDown(queue.dispose);
+    for (var i = 0; i < 10; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await queue.running;
+
+    expect(maxRunning, 2);
+    expect(queue.items().completed, hasLength(10));
+  });
+
+  test('keeps the parallel limit when stopped and started again at once',
+      () async {
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(parallel: 2, itemHandler: gate.call);
+    addTearDown(queue.dispose);
+    for (var i = 0; i < 6; i++) {
+      queue.add(i);
+    }
+    queue.start();
+    await wait();
+
+    queue
+      ..stop()
+      ..start();
+    await wait();
+    expect(gate.started, [0, 1]);
+
+    gate.release(0);
+    await wait();
+    expect(gate.started, [0, 1, 2]);
+  });
+
+  test('stops by itself once every item is processed', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    queue.add(1);
+
+    queue.start();
+    await queue.running;
+
+    expect(queue.isStarted, isFalse);
+    expect(queue.isProcessing, isFalse);
+    expect(events, [
+      'itemAdded:1:pending',
+      'startedQueue',
+      'startedProcessing',
+      'itemStatusUpdated:1:processing',
+      'itemStatusUpdated:1:completed',
+      'stoppedProcessing',
+      'stoppedQueue',
+    ]);
+  });
+
+  test('does nothing when started while started', () async {
+    final handled = <int>[];
+    final queue = QueueIt<int>(itemHandler: (item) async {
+      handled.add(item.data);
+      await wait();
+    });
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+    await wait();
+    queue
+      ..start()
+      ..start(stopAutomatically: false);
+    await queue.running;
+
+    expect(handled, [1, 2]);
+    expect(events.where((event) => event == 'startedQueue'), hasLength(1));
+    // The first start's stopAutomatically still applies.
+    expect(queue.isStarted, isFalse);
+  });
+
+  test('records the times in order', () async {
+    final queue = QueueIt<int>(parallel: 2, itemHandler: (item) => wait(1));
+    addTearDown(queue.dispose);
+    late QueueSnapshot<int> last;
+    queue.onUpdate.listen((snapshot) => last = snapshot);
+    for (var i = 0; i < 5; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await queue.running;
+
+    final times = [
+      last.startedAt!,
+      last.startedProcessingAt!,
+      for (final item in last.items) item.startedProcessingAt!,
+      last.stoppedProcessingAt!,
+      last.stoppedAt!,
+    ];
+    for (var i = 0; i < times.length - 1; i++) {
+      expect(times[i].isAfter(times[i + 1]), isFalse, reason: 'time $i');
+    }
+  });
+
+  test('waits for its first item when started with none', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    var stopped = false;
+
+    queue.start();
+    queue.running.then((_) => stopped = true);
+    await wait(10);
+    expect(queue.isStarted, isTrue);
+    expect(stopped, isFalse);
+
+    queue.add(1);
+    await queue.running;
+    expect(statuses(queue), ['1:completed']);
+  });
+
+  test('leaves items added after it stopped by itself for the next start',
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    queue.add(2);
+    await wait(10);
+    expect(statuses(queue), ['1:completed', '2:pending']);
+
+    queue.start();
+    await queue.running;
+    expect(statuses(queue), ['1:completed', '2:completed']);
+  });
+
+  test('keeps processing items added later when it does not stop by itself',
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..start(stopAutomatically: false);
+    await wait(10);
+    expect(queue.isStarted, isTrue);
+    expect(queue.isProcessing, isFalse);
+
+    queue.add(2);
+    await wait(10);
+    expect(statuses(queue), ['1:completed', '2:completed']);
+
+    queue.stop();
+    await queue.running;
+  });
+
+  group('stop', () {
+    test('lets running items finish and leaves the rest pending', () async {
+      final gate = Gate<int>();
+      final queue = QueueIt<int>(itemHandler: gate.call);
+      addTearDown(queue.dispose);
+      final events = recordEvents(queue);
+      queue
+        ..add(1)
+        ..add(2)
+        ..start();
+      await wait();
+
+      queue.stop();
+      var stopped = false;
+      queue.running.then((_) => stopped = true);
+      await wait();
+      expect(queue.isStarted, isFalse);
+      expect(queue.isProcessing, isTrue);
+      expect(stopped, isFalse);
+
+      gate.release(1);
+      await wait();
+      expect(stopped, isTrue);
+      expect(queue.isProcessing, isFalse);
+      expect(statuses(queue), ['1:completed', '2:pending']);
+      expect(events.skip(4), [
+        'itemStatusUpdated:1:processing',
+        'stoppedQueue',
+        'itemStatusUpdated:1:completed',
+        'stoppedProcessing',
+      ]);
+    });
+
+    test('completes running right away when nothing is running', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue
+        ..add(1)
+        ..start(stopAutomatically: false);
+      await wait(10);
+
+      queue.stop();
+      await queue.running;
+      expect(queue.isProcessing, isFalse);
+    });
+
+    test('lets start pick up the pending items again', () async {
+      final gate = Gate<int>();
+      final queue = QueueIt<int>(itemHandler: gate.call);
+      addTearDown(queue.dispose);
+      queue
+        ..add(1)
+        ..add(2)
+        ..start();
+      await wait();
+      queue.stop();
+      gate.release(1);
+      await queue.running;
+
+      queue.start();
+      await wait();
+      gate.release(2);
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed']);
+    });
+  });
+
+  group('dispose', () {
+    test('ignores the outcome of running handlers', () async {
+      final gate = Gate<int>();
+      final queue = QueueIt<int>(itemHandler: gate.call);
+      queue
+        ..add(1)
+        ..start();
+      await wait();
+
+      queue.dispose();
+      await queue.running;
+      gate.release(1);
+      await wait();
+
+      expect(statuses(queue), ['1:processing']);
+    });
+
+    test('closes onUpdate', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      var closed = false;
+      queue.onUpdate.listen(null, onDone: () => closed = true);
+
+      queue.dispose();
+
+      expect(closed, isTrue);
+    });
+
+    test('refuses new items and starts', () {
+      final queue = QueueIt<int>(itemHandler: (item) {})..dispose();
+
+      expect(() => queue.add(1), throwsStateError);
+      expect(queue.start, throwsStateError);
+      expect(queue.dispose, returnsNormally);
+    });
+  });
+}
