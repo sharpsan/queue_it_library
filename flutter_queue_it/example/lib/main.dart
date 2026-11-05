@@ -38,6 +38,9 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
     await Future<void>.delayed(
       Duration(milliseconds: 500 + _random.nextInt(1500)),
     );
+    // The queue doesn't stop a handler when its image is canceled or removed,
+    // so check before going on.
+    if (item.status != QueueItemStatus.processing) return;
     if (_random.nextDouble() < 0.3) {
       throw Exception('Simulated network error');
     }
@@ -45,6 +48,7 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
     }
+    if (item.status != QueueItemStatus.processing) return;
     _images[item.id] = response.bodyBytes;
   }
 

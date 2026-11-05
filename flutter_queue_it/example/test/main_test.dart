@@ -173,9 +173,23 @@ void main() {
       await tester.tap(find.byTooltip('Stop the queue'));
       await tester.pump();
 
-      // The canceled and removed images' downloads keep going in the
-      // background, for up to 2 s. Let them finish.
+      // The canceled and removed images' handlers wait out their delay, up
+      // to 2 s, before they see they're done.
       await tester.pump(const Duration(seconds: 2));
+
+      // Starting the queue again rebuilds the list. The canceled images
+      // weren't downloaded after all.
+      await tester.tap(find.byTooltip('Start the queue'));
+      await tester.pump();
+      for (final tile in [
+        find.byType(ListTile).first,
+        find.byType(ListTile).last,
+      ]) {
+        expect(find.descendant(of: tile, matching: find.byType(Image)),
+            findsNothing);
+      }
+      await tester.tap(find.byTooltip('Stop the queue'));
+      await tester.pump();
     }, () => server.client);
   });
 }
