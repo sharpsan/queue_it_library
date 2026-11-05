@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The packages are released together, so they share a version.
+      - name: Check the versions match
+        run: |
+          version="$(sed -n 's/^version: *//p' queue_it/pubspec.yaml)"
+          flutter_version="$(sed -n 's/^version: *//p' flutter_queue_it/pubspec.yaml)"
+          if [ "$version" != "$flutter_version" ]; then
+            echo "::error::queue_it is $version but flutter_queue_it is $flutter_version. They're released together, so they need the same version."
+            exit 1
+          fi
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
