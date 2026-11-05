@@ -2,8 +2,8 @@
 
 * Fix: `waitFor` gives the item as it finished, even when a listener then removes the item or
   disposes the queue, or adds a new item with the same id.
-* Fix: `waitFor` fails with a `StateError` when it's called after `dispose`, instead of never
-  completing.
+* Fix: `waitFor` fails with a `StateError` when it's called after `dispose` for an item that
+  hasn't finished, instead of never completing.
 * Fix: in the `failed` update of an attempt that will be retried, `waitFor` waits for the retry,
   and `cancel` cancels the item instead of returning false.
 * Fix: disposing the queue from a listener as an item fails no longer leaves its retry timer
@@ -25,6 +25,8 @@
   processing.
 * Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
   listeners can't start the queue again.
+* Fix: a long run of items whose handler throws right away, without being `async`, no longer
+  overflows the stack and leaves the queue stuck.
 * Fix: `summary` rounds the progress, and `progress` is only 1 once every item has finished,
   instead of rounding up to 1 with items left.
 * Fix: with `deepCopyItemsInSnapshot`, each update costs time in proportion to the current batch,

@@ -203,6 +203,24 @@ void main() {
     await queue.running;
   });
 
+  test('handles a long run of handlers that throw right away', () async {
+    // Not async: the handler throws before returning a future.
+    final queue = QueueIt<int>(
+      itemHandler: (item) => throw FormatException('bad ${item.data}'),
+    );
+    addTearDown(queue.dispose);
+    queue.onUpdate.listen((snapshot) {});
+    for (var i = 0; i < 20000; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await queue.running.timeout(const Duration(seconds: 30));
+
+    expect(queue.isProcessing, isFalse);
+    expect(queue.items().failed, hasLength(20000));
+  });
+
   test('processes an item added as processing stops', () async {
     final queue = QueueIt<int>(itemHandler: (item) {});
     addTearDown(queue.dispose);

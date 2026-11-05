@@ -57,7 +57,8 @@ class QueueItem<T> {
   /// [QueueItemStatus.processing] isn't allowed: the attempt fails with a
   /// [StateError].
   ///
-  /// If the handler throws, the attempt fails, whatever it set.
+  /// If the handler throws, the attempt fails, whatever it set. The queue
+  /// clears it after each attempt.
   QueueItemStatus? nextStatus;
 
   /// The error that made the item's last failed attempt fail, or null if no

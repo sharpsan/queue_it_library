@@ -213,6 +213,23 @@ void main() {
     });
   });
 
+  test('retries a handler that throws right away many times', () async {
+    final queue = QueueIt<int>(
+      retries: 20000,
+      itemHandler: (item) => throw const FormatException('bad'),
+    );
+    addTearDown(queue.dispose);
+    queue.onUpdate.listen((snapshot) {});
+    final finished = queue.waitFor(queue.add(1));
+
+    queue.start();
+    final item = await finished.timeout(const Duration(seconds: 30));
+
+    expect(item.status, QueueItemStatus.failed);
+    expect(item.retryCount, 20000);
+    await queue.running;
+  });
+
   test('lets waitFor called as an attempt fails wait for the retry', () async {
     final queue = QueueIt<int>(
       retries: 1,

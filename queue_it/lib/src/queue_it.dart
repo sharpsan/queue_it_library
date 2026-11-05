@@ -165,13 +165,16 @@ class QueueIt<T> {
   /// It becomes true when the queue starts an item after having none to
   /// process, and false when it has none left, waiting retries included, or
   /// when it was stopped and the items it was processing have finished.
+  /// Handlers of items canceled or removed while they run count until they
+  /// return.
   bool get isProcessing => _isProcessing;
 
   /// Whether the queue has been started and not stopped since.
   bool get isStarted => _isStarted;
 
   /// A future that completes when the queue has stopped and the items it was
-  /// processing have finished. It's already complete if the queue was never
+  /// processing have finished, including the handlers of items canceled or
+  /// removed meanwhile. It's already complete if the queue was never
   /// started.
   Future<void> get running => _running?.future ?? Future.value();
   Completer<void>? _running;
@@ -603,7 +606,10 @@ class QueueIt<T> {
     Object? error;
     StackTrace? stackTrace;
     try {
-      await itemHandler(item);
+      // A handler that throws right away still settles a microtask later, as
+      // one that returns does. Otherwise a run of such failures would start
+      // each next item deeper on the stack.
+      await Future<void>.sync(() => itemHandler(item));
     } catch (e, s) {
       error = e;
       stackTrace = s;
