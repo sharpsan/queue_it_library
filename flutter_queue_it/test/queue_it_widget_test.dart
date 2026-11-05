@@ -197,6 +197,33 @@ void main() {
   });
 
   testWidgets(
+      'rebuilds after the frame for changes made in a build outside '
+      'a frame', (tester) async {
+    // Flutter builds the app's first widgets that way, in runApp.
+    final shown = ValueNotifier(false);
+    await tester.pumpWidget(Column(children: [
+      recorder(queue, builds),
+      ValueListenableBuilder<bool>(
+        valueListenable: shown,
+        builder: (context, show, child) => show
+            ? _Lifecycle(onInit: () => queue.add('from initState'))
+            : const SizedBox(),
+      ),
+    ]));
+    shown.value = true;
+    final element = tester.element(find.byType(ValueListenableBuilder<bool>));
+
+    tester.binding.buildOwner!.buildScope(element);
+
+    expect(tester.takeException(), isNull);
+    expect(queue.items(), hasLength(1));
+    // The deferred rebuild runs after the next frame, in the one after it.
+    await tester.pump();
+    await tester.pump();
+    expect(builds.last!.eventItem!.data, 'from initState');
+  });
+
+  testWidgets(
       'rebuilds after the frame for changes made by a widget it '
       'disposes', (tester) async {
     final id = queue.add('a');

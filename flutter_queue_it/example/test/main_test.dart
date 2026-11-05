@@ -130,6 +130,30 @@ void main() {
     }, () => server.client);
   });
 
+  testWidgets('removes two images swiped one after the other', (tester) async {
+    final server = _Server();
+    await http.runWithClient(() async {
+      example.main();
+      await tester.pump();
+      await tester.tap(find.byTooltip('Add five images'));
+      await tester.pump();
+      final titles = [
+        for (final tile in tester.widgetList<ListTile>(find.byType(ListTile)))
+          (tile.title! as Text).data!,
+      ];
+
+      // The second swipe starts while the first image is still going away.
+      await tester.drag(find.byType(Dismissible).at(0), const Offset(-800, 0));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.drag(find.byType(Dismissible).at(1), const Offset(-800, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text(titles[0]), findsNothing);
+      expect(find.text(titles[1]), findsNothing);
+      expect(find.byType(ListTile), findsNWidgets(3));
+    }, () => server.client);
+  });
+
   testWidgets('cancels and removes images', (tester) async {
     final server = _Server();
     await http.runWithClient(() async {

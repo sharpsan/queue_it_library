@@ -144,8 +144,8 @@ QueueItListener(
 ```
 
 The listener can call the queue too. It's called right away, inside the queue call that caused the
-update, so if you change the queue while Flutter is building, for example from a widget's
-`initState`, the listener runs during the build and can't show a SnackBar yet.
+update, so if you change the queue while Flutter is building or disposing widgets, for example
+from a widget's `initState` or `dispose`, the listener runs then and can't show a SnackBar yet.
 
 ### Good to know
 

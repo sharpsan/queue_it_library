@@ -6,10 +6,12 @@
   out or disposing widgets, for example from a widget's `initState` or `dispose`. It rebuilds
   right after that frame.
 * Fix: `QueueItListener` stops calling the listener as soon as it's being removed, so the listener
-  never gets a context it can't use.
+  never gets a context it can't use. When it's moved with a `GlobalKey`, the events sent during the
+  move reach the listener once it's in its new place.
 * Docs: the README's progress bar shows the current batch, and its "All uploads processed"
   message no longer shows when the queue is stopped early.
-* Example: a canceled or removed image is no longer downloaded and shown anyway.
+* Example: a canceled or removed image is no longer downloaded and shown anyway, two images swiped
+  away one after the other are both removed, and a download gives up after 30 seconds.
 
 ## 0.10.0
 

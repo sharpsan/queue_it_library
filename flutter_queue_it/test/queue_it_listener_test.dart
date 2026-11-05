@@ -145,6 +145,42 @@ void main() {
     expect(errors, isEmpty);
   });
 
+  testWidgets('hears the events sent while it is moved', (tester) async {
+    final key = GlobalKey();
+    Widget build({required bool moved}) {
+      final child = QueueItListener<String>(
+        key: key,
+        queue: queue,
+        listener: (context, snapshot) {
+          // The context is usable.
+          Directionality.of(context);
+          events.add('${snapshot.event.name}:${snapshot.eventItem?.data}');
+        },
+        child: const SizedBox(),
+      );
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(children: [
+          // Built after the listener left its old place and before it joins
+          // the new one.
+          if (moved) _Lifecycle(onInit: () => queue.add('during')),
+          moved
+              ? Center(child: child)
+              : Padding(
+                  padding: EdgeInsets.zero,
+                  child: child,
+                ),
+        ]),
+      );
+    }
+
+    await tester.pumpWidget(build(moved: false));
+    await tester.pumpWidget(build(moved: true));
+    queue.add('after');
+
+    expect(events, ['itemAdded:during', 'itemAdded:after']);
+  });
+
   testWidgets('keeps listening when moved with a GlobalKey', (tester) async {
     final key = GlobalKey();
     Widget build({required bool wrapped}) {
@@ -166,12 +202,13 @@ void main() {
   });
 }
 
-/// Calls [onDispose] from dispose, like a widget that cancels its work when
-/// it goes.
+/// Calls [onInit] from initState and [onDispose] from dispose, like a widget
+/// that adds its work to a queue when it appears, or cancels it when it goes.
 class _Lifecycle extends StatefulWidget {
-  const _Lifecycle({required this.onDispose});
+  const _Lifecycle({this.onInit, this.onDispose});
 
-  final VoidCallback onDispose;
+  final VoidCallback? onInit;
+  final VoidCallback? onDispose;
 
   @override
   State<_Lifecycle> createState() => _LifecycleState();
@@ -179,8 +216,14 @@ class _Lifecycle extends StatefulWidget {
 
 class _LifecycleState extends State<_Lifecycle> {
   @override
+  void initState() {
+    super.initState();
+    widget.onInit?.call();
+  }
+
+  @override
   void dispose() {
-    widget.onDispose();
+    widget.onDispose?.call();
     super.dispose();
   }
 

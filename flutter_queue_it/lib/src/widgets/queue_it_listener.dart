@@ -27,11 +27,13 @@ import 'package:flutter/widgets.dart';
 ///
 /// The listener runs synchronously, inside the queue call that caused the
 /// event. It can call the queue. If that call was made while Flutter builds
-/// widgets, from a widget's `initState` for example, the listener runs during
-/// the build, so it can't show a SnackBar or change other widgets' state
-/// then.
+/// or disposes widgets, from a widget's `initState` or `dispose` for example,
+/// the listener runs then too, so it can't show a SnackBar or change other
+/// widgets' state at that moment.
 ///
-/// The listener isn't called once the widget is being removed. The widget
+/// The listener isn't called once the widget is being removed. When the
+/// widget moves to a new place in the tree (with a [GlobalKey]), events sent
+/// during the move reach the listener once it's in its new place. The widget
 /// never starts, stops or disposes the queue.
 class QueueItListener<T> extends StatefulWidget {
   /// Creates a widget that calls [listener] for every event of [queue].
@@ -61,6 +63,10 @@ class QueueItListener<T> extends StatefulWidget {
 class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   StreamSubscription<QueueSnapshot<T>>? _subscription;
 
+  /// The events sent while the widget is deactivated, or null while it's
+  /// active.
+  List<QueueSnapshot<T>>? _deferred;
+
   @override
   void initState() {
     super.initState();
@@ -76,13 +82,13 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     }
   }
 
-  // A widget being removed is deactivated first, and its context can't be
-  // used any more. Events can arrive before it's disposed, for example when
-  // a widget removed along with it changes the queue from its dispose.
+  // A widget being removed or moved is deactivated first, and its context
+  // can't be used until it's back in the tree. Events can arrive in between,
+  // for example when another widget changes the queue from its initState or
+  // dispose. They're kept for a move, and dropped with the widget otherwise.
   @override
   void deactivate() {
-    _subscription?.cancel();
-    _subscription = null;
+    _deferred = [];
     super.deactivate();
   }
 
@@ -90,7 +96,12 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   @override
   void activate() {
     super.activate();
-    _listen();
+    final deferred = _deferred!;
+    // Events the listener causes join the list, so they stay in order.
+    for (var i = 0; i < deferred.length; i++) {
+      widget.listener(context, deferred[i]);
+    }
+    _deferred = null;
   }
 
   @override
@@ -101,7 +112,12 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
 
   void _listen() {
     _subscription = widget.queue.onUpdate.listen((snapshot) {
-      if (mounted) widget.listener(context, snapshot);
+      final deferred = _deferred;
+      if (deferred != null) {
+        deferred.add(snapshot);
+      } else if (mounted) {
+        widget.listener(context, snapshot);
+      }
     });
   }
 
