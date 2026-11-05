@@ -129,6 +129,25 @@ void main() {
       expect(queue.currentBatchItems.map((item) => item.data), [1, 2]);
     });
 
+    test('keep an item that is about to start', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing &&
+            queue.items().length == 1) {
+          queue.add(2);
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed']);
+      expect(queue.items().map((item) => item.batchId).toSet(),
+          {queue.currentBatchId});
+    });
+
     test("don't wait for the handler of a canceled item", () async {
       final gate = Gate<int>();
       final queue = QueueIt<int>(itemHandler: gate.call);

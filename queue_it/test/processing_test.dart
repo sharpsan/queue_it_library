@@ -222,6 +222,31 @@ void main() {
     expect(queue.isStarted, isFalse);
   });
 
+  test('waits for items when a listener starts it again as it stops', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    var restarted = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.stoppedProcessing && !restarted) {
+        restarted = true;
+        queue
+          ..stop()
+          ..start();
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+    await wait(10);
+    expect(queue.isStarted, isTrue);
+
+    queue.add(2);
+    await queue.running;
+
+    expect(statuses(queue), ['1:completed', '2:completed']);
+    expect(queue.isStarted, isFalse);
+  });
+
   test(
       'stops by itself when its items are canceled or removed before it '
       'gets to them', () async {
@@ -365,6 +390,23 @@ void main() {
       await wait();
 
       expect(queue.isProcessing, isFalse);
+    });
+
+    test(
+        'settles isProcessing when a listener disposes it as processing '
+        'starts', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing) queue.dispose();
+      });
+      queue
+        ..add(1)
+        ..start();
+      await wait();
+
+      expect(queue.isStarted, isFalse);
+      expect(queue.isProcessing, isFalse);
+      expect(statuses(queue), ['1:pending']);
     });
 
     test("can't be started again by a listener", () {

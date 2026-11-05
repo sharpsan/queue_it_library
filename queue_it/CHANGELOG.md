@@ -17,6 +17,8 @@
   next `start`.
 * Fix: a queue that stops automatically also stops when its items are all canceled or removed
   before it gets to them, so `running` completes.
+* Fix: a queue that a `stoppedProcessing` listener stops and starts again waits for new items,
+  instead of stopping right away.
 * Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
   listeners can't start the queue again.
 * Fix: `summary` rounds the progress.

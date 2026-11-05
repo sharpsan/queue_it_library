@@ -93,6 +93,10 @@ class QueueIt<T> {
   /// Whether the queue has had items to process since it was started.
   var _hasHadItems = false;
 
+  /// How many times the queue has been started, to tell whether a listener
+  /// started it again.
+  var _starts = 0;
+
   /// Whether [dispose] has been called, and whether it has finished stopping
   /// the queue.
   var _isDisposing = false;
@@ -212,6 +216,7 @@ class QueueIt<T> {
     _checkNotDisposed();
     if (_isStarted) return;
     _isStarted = true;
+    _starts++;
     _stopAutomatically = stopAutomatically;
     _hasHadItems = _hasWork();
     final running = _running;
@@ -433,14 +438,16 @@ class QueueIt<T> {
           true,
       };
 
-  /// Whether an item is still to be finished: waiting, being processed or
-  /// about to be retried. A handler that's still running for an item that
-  /// was canceled or removed doesn't count.
+  /// Whether an item is still to be finished: waiting, being processed (or
+  /// about to be) or about to be retried. A handler that's still running for
+  /// an item that was canceled or removed doesn't count.
   bool _hasUnfinishedItems() =>
       _waiting.isNotEmpty ||
       _retryTimers.isNotEmpty ||
       _retrying.isNotEmpty ||
-      _runningItems.any((item) => item.status == QueueItemStatus.processing);
+      _runningItems.any((item) =>
+          item.status == QueueItemStatus.pending ||
+          item.status == QueueItemStatus.processing);
 
   /// Whether the queue has anything left to do: items waiting or waiting to
   /// be retried, or handlers running.
@@ -524,16 +531,27 @@ class QueueIt<T> {
   /// stops it if it stops automatically, and completes [running] once a
   /// stopped queue's last handler has returned.
   void _checkIdle() {
-    if (_isDisposed || _runningItems.isNotEmpty) return;
+    if (_runningItems.isNotEmpty) return;
+    if (_isDisposed) {
+      // A disposed queue sends no more events.
+      if (_isProcessing) {
+        _isProcessing = false;
+        _lastStoppedProcessingAt = DateTime.now();
+      }
+      return;
+    }
     if (_isStarted && _hasWork()) return;
     final wasProcessing = _isProcessing;
+    final starts = _starts;
     if (_isProcessing) {
       _isProcessing = false;
       _lastStoppedProcessingAt = DateTime.now();
       _sendOnUpdateEvent(QueueEvent.stoppedProcessing, null);
     }
-    // A listener may have added an item in the meantime.
+    // A listener may have added an item, or stopped and started the queue
+    // again, in the meantime.
     if (_isStarted &&
+        _starts == starts &&
         _stopAutomatically &&
         (wasProcessing || _hasHadItems) &&
         !_hasWork()) {
@@ -576,11 +594,7 @@ class QueueIt<T> {
     }
     _runningItems.remove(item);
     if (_isDisposed) {
-      // The queue is stopped and sends no more events.
-      if (_runningItems.isEmpty && _isProcessing) {
-        _isProcessing = false;
-        _lastStoppedProcessingAt = DateTime.now();
-      }
+      _checkIdle();
       return;
     }
     try {
