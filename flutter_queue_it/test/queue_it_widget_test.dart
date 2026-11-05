@@ -166,4 +166,92 @@ void main() {
 
     expect(queue.items().completed, hasLength(1));
   });
+
+  testWidgets('rebuilds after the frame for changes made while it builds',
+      (tester) async {
+    // A child that adds an item as it's built, on the first build and on a
+    // later one.
+    Widget build({required bool withChild}) => QueueItWidget<String>(
+          queue: queue,
+          builder: (context, snapshot) {
+            builds.add(snapshot);
+            return withChild
+                ? _Lifecycle(onInit: () => queue.add('from initState'))
+                : const SizedBox();
+          },
+        );
+    await tester.pumpWidget(build(withChild: true));
+    await tester.pump();
+    expect(builds.last!.eventItem!.data, 'from initState');
+
+    await tester.pumpWidget(build(withChild: false));
+    await tester.pumpWidget(build(withChild: true));
+    await tester.pump();
+    expect(queue.items(), hasLength(2));
+    expect(builds.last!.items, hasLength(2));
+
+    // And it keeps rebuilding for later changes.
+    queue.add('later');
+    await tester.pump();
+    expect(builds.last!.eventItem!.data, 'later');
+  });
+
+  testWidgets(
+      'rebuilds after the frame for changes made by a widget it '
+      'disposes', (tester) async {
+    final id = queue.add('a');
+    Widget build({required bool withTile}) => Column(children: [
+          recorder(queue, builds),
+          if (withTile) _Lifecycle(onDispose: () => queue.cancelById(id)),
+        ]);
+    await tester.pumpWidget(build(withTile: true));
+
+    await tester.pumpWidget(build(withTile: false));
+    await tester.pump();
+
+    expect(builds.last!.eventItem!.status, QueueItemStatus.canceled);
+  });
+
+  testWidgets('rebuilds after the frame for changes made during layout',
+      (tester) async {
+    await tester.pumpWidget(Column(children: [
+      recorder(queue, builds),
+      LayoutBuilder(builder: (context, constraints) {
+        if (queue.items().isEmpty) queue.add('from layout');
+        return const SizedBox();
+      }),
+    ]));
+    await tester.pump();
+
+    expect(builds.last!.eventItem!.data, 'from layout');
+  });
+}
+
+/// Calls [onInit] from initState and [onDispose] from dispose, like a widget
+/// that adds its work to a queue when it appears, or cancels it when it goes.
+class _Lifecycle extends StatefulWidget {
+  const _Lifecycle({this.onInit, this.onDispose});
+
+  final VoidCallback? onInit;
+  final VoidCallback? onDispose;
+
+  @override
+  State<_Lifecycle> createState() => _LifecycleState();
+}
+
+class _LifecycleState extends State<_Lifecycle> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInit?.call();
+  }
+
+  @override
+  void dispose() {
+    widget.onDispose?.call();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox();
 }

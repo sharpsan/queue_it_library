@@ -15,9 +15,9 @@ import 'package:flutter/widgets.dart';
 ///   queue: queue,
 ///   listener: (context, snapshot) {
 ///     final item = snapshot.eventItem;
-///     if (item != null && item.status == QueueItemStatus.failed) {
+///     if (item != null && item.status == QueueItemStatus.completed) {
 ///       ScaffoldMessenger.of(context).showSnackBar(
-///         SnackBar(content: Text('${item.data} failed')),
+///         SnackBar(content: Text('${item.data} uploaded')),
 ///       );
 ///     }
 ///   },
@@ -26,8 +26,13 @@ import 'package:flutter/widgets.dart';
 /// ```
 ///
 /// The listener runs synchronously, inside the queue call that caused the
-/// event. It can call the queue. The widget never starts, stops or disposes
-/// the queue.
+/// event. It can call the queue. If that call was made while Flutter builds
+/// widgets, from a widget's `initState` for example, the listener runs during
+/// the build, so it can't show a SnackBar or change other widgets' state
+/// then.
+///
+/// The listener isn't called once the widget is being removed. The widget
+/// never starts, stops or disposes the queue.
 class QueueItListener<T> extends StatefulWidget {
   /// Creates a widget that calls [listener] for every event of [queue].
   const QueueItListener({
@@ -69,6 +74,23 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
       _subscription?.cancel();
       _listen();
     }
+  }
+
+  // A widget being removed is deactivated first, and its context can't be
+  // used any more. Events can arrive before it's disposed, for example when
+  // a widget removed along with it changes the queue from its dispose.
+  @override
+  void deactivate() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.deactivate();
+  }
+
+  // Back in the tree after a move with a GlobalKey.
+  @override
+  void activate() {
+    super.activate();
+    _listen();
   }
 
   @override

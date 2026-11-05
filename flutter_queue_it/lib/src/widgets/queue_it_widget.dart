@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:queue_it/queue_it.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// A widget that rebuilds whenever a [QueueIt] changes.
@@ -36,6 +37,11 @@ import 'package:flutter/widgets.dart';
 /// latest snapshot, so the builder doesn't see every event. To act on each
 /// event, such as to show a message, use a [QueueItListener].
 ///
+/// Flutter doesn't allow rebuilding while it builds, lays out or disposes
+/// widgets, which is when a widget's `initState`, `build` or `dispose` might
+/// change the queue. Events sent then rebuild the widget once that frame is
+/// done.
+///
 /// ## The queue or the snapshot
 ///
 /// To show the queue's current state, read it from the queue, for example
@@ -48,7 +54,7 @@ import 'package:flutter/widgets.dart';
 /// holds the items of the queue's current batch. Unless the queue was created
 /// with [QueueIt.deepCopyItemsInSnapshot] set, those are the queue's live
 /// items, so they show each item's current status, not its status at the time
-/// of the event.
+/// of the event, and items removed since are gone.
 ///
 /// ## Owning the queue
 ///
@@ -104,6 +110,7 @@ class QueueItWidget<T> extends StatefulWidget {
 class _QueueItWidgetState<T> extends State<QueueItWidget<T>> {
   StreamSubscription<QueueSnapshot<T>>? _subscription;
   QueueSnapshot<T>? _snapshot;
+  var _isRebuildScheduled = false;
 
   @override
   void initState() {
@@ -128,11 +135,30 @@ class _QueueItWidgetState<T> extends State<QueueItWidget<T>> {
 
   void _listen() {
     _subscription = widget.queue.onUpdate.listen((snapshot) {
-      if (widget.buildWhen?.call(snapshot) ?? true) {
+      if (!(widget.buildWhen?.call(snapshot) ?? true)) return;
+      if (!_isBuilding) {
         setState(() => _snapshot = snapshot);
+        return;
       }
+      // Flutter is building: rebuild once the frame is done.
+      _snapshot = snapshot;
+      if (_isRebuildScheduled) return;
+      _isRebuildScheduled = true;
+      SchedulerBinding.instance
+        ..addPostFrameCallback((_) {
+          _isRebuildScheduled = false;
+          if (mounted) setState(() {});
+        })
+        ..ensureVisualUpdate();
     });
   }
+
+  /// Whether Flutter is building, laying out or disposing widgets: during a
+  /// frame, or while it attaches the app's first widgets.
+  bool get _isBuilding =>
+      SchedulerBinding.instance.schedulerPhase ==
+          SchedulerPhase.persistentCallbacks ||
+      (WidgetsBinding.instance.buildOwner?.debugBuilding ?? false);
 
   @override
   Widget build(BuildContext context) => widget.builder(context, _snapshot);

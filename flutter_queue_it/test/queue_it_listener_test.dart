@@ -112,4 +112,78 @@ void main() {
 
     expect(events, isEmpty);
   });
+
+  testWidgets('stops calling the listener as it is removed', (tester) async {
+    final id = queue.add('a');
+    final errors = <Object>[];
+    // The listener uses its context, which can't be used once the widget is
+    // being removed.
+    Widget build({required bool shown}) => Directionality(
+          textDirection: TextDirection.ltr,
+          child: shown
+              ? QueueItListener<String>(
+                  queue: queue,
+                  listener: (context, snapshot) {
+                    try {
+                      Directionality.of(context);
+                      events.add(snapshot.event.name);
+                    } catch (error) {
+                      errors.add(error);
+                    }
+                  },
+                  // Cancels the item as it's removed, with the listener.
+                  child: _Lifecycle(onDispose: () => queue.cancelById(id)),
+                )
+              : const SizedBox(),
+        );
+    await tester.pumpWidget(build(shown: true));
+
+    await tester.pumpWidget(build(shown: false));
+
+    expect(queue.items().single.status, QueueItemStatus.canceled);
+    expect(events, isEmpty);
+    expect(errors, isEmpty);
+  });
+
+  testWidgets('keeps listening when moved with a GlobalKey', (tester) async {
+    final key = GlobalKey();
+    Widget build({required bool wrapped}) {
+      final child = QueueItListener<String>(
+        key: key,
+        queue: queue,
+        listener: (context, snapshot) => events.add(snapshot.event.name),
+        child: const SizedBox(),
+      );
+      return wrapped ? Center(child: child) : child;
+    }
+
+    await tester.pumpWidget(build(wrapped: false));
+    await tester.pumpWidget(build(wrapped: true));
+
+    queue.add('a');
+
+    expect(events, ['itemAdded']);
+  });
+}
+
+/// Calls [onDispose] from dispose, like a widget that cancels its work when
+/// it goes.
+class _Lifecycle extends StatefulWidget {
+  const _Lifecycle({required this.onDispose});
+
+  final VoidCallback onDispose;
+
+  @override
+  State<_Lifecycle> createState() => _LifecycleState();
+}
+
+class _LifecycleState extends State<_Lifecycle> {
+  @override
+  void dispose() {
+    widget.onDispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox();
 }
