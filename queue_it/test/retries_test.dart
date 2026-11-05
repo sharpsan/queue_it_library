@@ -413,4 +413,164 @@ void main() {
 
     expect(queue.items(), isEmpty);
   });
+
+  group('during a failure that will be retried', () {
+    test('a listener cancels the item once', () async {
+      final queue = QueueIt<int>(
+        retries: 1,
+        itemHandler: (item) => throw Exception('failed'),
+      );
+      addTearDown(queue.dispose);
+      final events = recordEvents(queue);
+      final results = <bool>[];
+      // Two listeners that each cancel an item when it fails, and one that
+      // cancels it whenever it hears of it after that.
+      for (var i = 0; i < 2; i++) {
+        queue.onUpdate.listen((snapshot) {
+          final item = snapshot.eventItem;
+          if (item?.status == QueueItemStatus.failed) {
+            results.add(queue.cancel(item!));
+          }
+        });
+      }
+      var calls = 0;
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item != null && item.failedAt != null && calls < 100) {
+          calls++;
+          queue.cancel(item);
+        }
+      });
+
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(results, [true, false]);
+      expect(calls, lessThan(100));
+      expect(
+          events.where((event) => event.endsWith(':canceled')), hasLength(1));
+    });
+
+    test(
+        'an item added once a listener removed the failing one starts a '
+        'new batch', () async {
+      final queue = QueueIt<int>(
+        retries: 1,
+        itemHandler: (item) {
+          if (item.data == 1) throw Exception('failed');
+        },
+      );
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.data == 1 && item?.status == QueueItemStatus.failed) {
+          queue
+            ..remove(item!)
+            ..add(2);
+        }
+      });
+      queue.add(1);
+      final first = queue.currentBatchId;
+
+      queue.start();
+      await queue.running;
+
+      expect(statuses(queue), ['2:completed']);
+      expect(queue.items().single.batchId, isNot(first));
+    });
+
+    test('retryIf and retryDelay can cancel or remove the item', () async {
+      for (final callback in ['retryIf', 'retryDelay']) {
+        for (final remove in [false, true]) {
+          late QueueIt<int> queue;
+          var attempts = 0;
+          void call() {
+            remove ? queue.removeById('a') : queue.cancelById('a');
+          }
+
+          queue = QueueIt<int>(
+            retries: 1,
+            retryIf: callback == 'retryIf'
+                ? (error) {
+                    call();
+                    return true;
+                  }
+                : null,
+            retryDelay: callback == 'retryDelay'
+                ? (retry) {
+                    call();
+                    return Duration.zero;
+                  }
+                : null,
+            itemHandler: (item) {
+              attempts++;
+              throw Exception('failed');
+            },
+          );
+          final finished = queue.waitFor(queue.add(1, id: 'a'));
+
+          queue.start();
+          await queue.running.timeout(const Duration(seconds: 1));
+
+          final reason = '${remove ? 'removed' : 'canceled'} by $callback';
+          expect(attempts, 1, reason: reason);
+          expect((await finished).status,
+              remove ? QueueItemStatus.removed : QueueItemStatus.canceled,
+              reason: reason);
+          expect(statuses(queue), remove ? isEmpty : ['1:canceled'],
+              reason: reason);
+          queue.dispose();
+        }
+      }
+    });
+
+    test('an item added by retryIf joins the batch', () async {
+      late QueueIt<int> queue;
+      queue = QueueIt<int>(
+        retries: 1,
+        retryIf: (error) {
+          if (queue.items().length == 1) queue.add(2);
+          return true;
+        },
+        itemHandler: (item) {
+          if (item.data == 1 && item.retryCount == 0) {
+            throw Exception('flaky');
+          }
+        },
+      );
+      addTearDown(queue.dispose);
+
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed']);
+      expect(queue.items().map((item) => item.batchId).toSet(),
+          {queue.currentBatchId});
+    });
+
+    test('a listener that disposes the queue leaves the item pending',
+        () async {
+      final queue = QueueIt<int>(
+        retries: 2,
+        itemHandler: (item) => throw Exception('failed'),
+      );
+      final id = queue.add(1);
+      final before = queue.waitFor(id);
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.eventItem?.status == QueueItemStatus.failed) {
+          queue.dispose();
+        }
+      });
+
+      queue.start();
+
+      await expectLater(before, throwsStateError);
+      expect(statuses(queue), ['1:pending']);
+      await expectLater(queue.waitFor(id), throwsStateError);
+    });
+  });
 }

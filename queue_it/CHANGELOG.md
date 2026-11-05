@@ -19,6 +19,10 @@
   before it gets to them, so `running` completes.
 * Fix: a queue that a `stoppedProcessing` listener stops and starts again waits for new items,
   instead of stopping right away.
+* Fix: a queue started while only the handlers of canceled items are running waits for new items,
+  instead of stopping when those handlers return.
+* Fix: an item's handler no longer starts when a listener disposes the queue as the item starts
+  processing.
 * Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
   listeners can't start the queue again.
 * Fix: `summary` rounds the progress.

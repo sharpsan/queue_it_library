@@ -64,8 +64,8 @@ class QueueIt<T> {
   final _waiting = LinkedList<_WaitingItem<T>>();
   final _waitingEntries = <QueueItem<T>, _WaitingItem<T>>{};
 
-  /// The items whose handler is running, including items canceled or removed
-  /// since it started.
+  /// The items whose handler is running, or whose outcome is being applied,
+  /// including items canceled or removed since the handler started.
   final _runningItems = <QueueItem<T>>{};
 
   /// The items in the `failed` event of an attempt that will be retried.
@@ -218,7 +218,7 @@ class QueueIt<T> {
     _isStarted = true;
     _starts++;
     _stopAutomatically = stopAutomatically;
-    _hasHadItems = _hasWork();
+    _hasHadItems = _hasUnfinishedItems();
     final running = _running;
     if (running == null || running.isCompleted) _running = Completer<void>();
     _lastStartedAt = DateTime.now();
@@ -299,6 +299,7 @@ class QueueIt<T> {
     _itemsById.clear();
     _waiting.clear();
     _waitingEntries.clear();
+    _retrying.clear();
     for (final timer in _retryTimers.values) {
       timer.cancel();
     }
@@ -477,6 +478,7 @@ class QueueIt<T> {
         !_retrying.contains(item)) {
       return false;
     }
+    _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
     item.status = QueueItemStatus.canceled;
@@ -486,6 +488,7 @@ class QueueIt<T> {
   void _remove(QueueItem<T> item) {
     _itemsById.remove(item.id);
     _items.remove(item);
+    _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
     item.status = QueueItemStatus.removed;
@@ -519,7 +522,6 @@ class QueueIt<T> {
   /// Starts waiting items while there are free slots, then checks whether the
   /// queue ran out of work.
   void _pump() {
-    if (_isDisposed) return;
     while (
         _isStarted && _runningItems.length < parallel && _waiting.isNotEmpty) {
       unawaited(_process(_dequeue()));
@@ -541,7 +543,6 @@ class QueueIt<T> {
       return;
     }
     if (_isStarted && _hasWork()) return;
-    final wasProcessing = _isProcessing;
     final starts = _starts;
     if (_isProcessing) {
       _isProcessing = false;
@@ -553,7 +554,7 @@ class QueueIt<T> {
     if (_isStarted &&
         _starts == starts &&
         _stopAutomatically &&
-        (wasProcessing || _hasHadItems) &&
+        _hasHadItems &&
         !_hasWork()) {
       stop();
     }
@@ -571,15 +572,15 @@ class QueueIt<T> {
       _lastStartedProcessingAt = DateTime.now();
       _sendOnUpdateEvent(QueueEvent.startedProcessing, null);
     }
-    // Listeners can stop the queue, or cancel or remove the item, before its
-    // handler starts.
+    // Listeners can stop or dispose the queue, or cancel or remove the item,
+    // before its handler starts.
     if (_isStarted && item.status == QueueItemStatus.pending) {
       item.status = QueueItemStatus.processing;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else if (item.status == QueueItemStatus.pending) {
       _enqueue(item, first: true);
     }
-    if (item.status != QueueItemStatus.processing) {
+    if (_isDisposing || item.status != QueueItemStatus.processing) {
       _runningItems.remove(item);
       return;
     }
@@ -592,14 +593,10 @@ class QueueIt<T> {
       error = e;
       stackTrace = s;
     }
-    _runningItems.remove(item);
-    if (_isDisposed) {
-      _checkIdle();
-      return;
-    }
     try {
-      _settle(item, error, stackTrace);
+      if (!_isDisposed) _settle(item, error, stackTrace);
     } finally {
+      _runningItems.remove(item);
       _pump();
     }
   }
@@ -644,6 +641,9 @@ class QueueIt<T> {
   /// Marks [item] as failed, then queues a retry if it has any left.
   void _fail(QueueItem<T> item, Object? error, StackTrace? stackTrace) {
     final delay = _retryDelay(item, error);
+    // retryIf or retryDelay canceled or removed the item, or disposed the
+    // queue.
+    if (_isDisposing || item.status != QueueItemStatus.processing) return;
     item
       ..error = error
       ..stackTrace = stackTrace
@@ -662,10 +662,13 @@ class QueueIt<T> {
     } finally {
       _retrying.remove(item);
     }
-    // A listener canceled or removed it, or disposed the queue.
-    if (_isDisposing || item.status != QueueItemStatus.failed) return;
+    // A listener canceled or removed it.
+    if (item.status != QueueItemStatus.failed) return;
 
     item.status = QueueItemStatus.pending;
+    // A listener disposed the queue. The item stays pending, like the other
+    // items that were waiting.
+    if (_isDisposing) return;
     if (delay <= Duration.zero) {
       _enqueue(item, first: true);
     } else {
