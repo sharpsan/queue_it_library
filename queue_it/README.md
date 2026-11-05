@@ -242,7 +242,8 @@ For a more in-depth look at how to use QueueIt, check out the
 - `add` and `start` throw a `StateError` once the queue is disposed.
 - `cancel` only cancels pending and processing items, and returns `false` for items that have
   already finished.
-- A new batch starts as soon as every item has finished, instead of only when the queue is empty.
+- The first item added after every item has finished starts a new batch, instead of only when the
+  queue is empty.
 - Canceled and removed items now stay that way, even if they were processing at the time.
 - `onUpdate` listeners can now call the queue. If you delayed those calls to get around the
   `Cannot fire new event` error, you don't need to anymore.

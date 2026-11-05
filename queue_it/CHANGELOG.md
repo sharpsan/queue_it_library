@@ -25,9 +25,14 @@
   processing.
 * Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
   listeners can't start the queue again.
-* Fix: `summary` rounds the progress.
+* Fix: `summary` rounds the progress, and `progress` is only 1 once every item has finished,
+  instead of rounding up to 1 with items left.
+* Fix: with `deepCopyItemsInSnapshot`, each update costs time in proportion to the current batch,
+  as documented, instead of to every item the queue holds. `currentBatchItems` is faster too.
 * Docs: an error thrown by `retryIf` or `retryDelay` is reported as an uncaught error, and the item
   isn't retried.
+* Docs: corrections about which statuses are final, what snapshots copy, what `retryDelay` is
+  called with, and what `summary` counts.
 
 ## 0.10.0
 

@@ -78,6 +78,37 @@ void main() {
       expect(queue.currentBatchId, first);
     });
 
+    test('are found after earlier items are removed', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      final snapshots = <QueueSnapshot<int>>[];
+      queue.onUpdate.listen(snapshots.add);
+      final first = queue.add(1);
+      queue
+        ..add(2)
+        ..start();
+      await queue.running;
+      final firstBatch = queue.currentBatchId;
+      final firstBatchSnapshot = snapshots.last;
+
+      queue
+        ..add(3)
+        ..add(4)
+        ..removeById(first)
+        ..add(5);
+
+      expect(queue.currentBatchItems.map((item) => item.data), [3, 4, 5]);
+      expect(snapshots.last.items.map((item) => item.data), [3, 4, 5]);
+      expect(queue.items(firstBatch).map((item) => item.data), [2]);
+      // A snapshot's items stay those of its batch.
+      expect(firstBatchSnapshot.items.map((item) => item.data), [2]);
+
+      queue
+        ..removeAll()
+        ..add(6);
+      expect(queue.currentBatchItems.map((item) => item.data), [6]);
+    });
+
     test('keep an item that is about to be retried', () async {
       final queue = QueueIt<int>(
         retries: 1,
@@ -466,6 +497,21 @@ void main() {
       expect(items.summary, contains('Failed: 1'));
       // ignore: deprecated_member_use_from_same_package
       expect(items.cancelled, items.canceled);
+    });
+
+    test('keeps the progress short of 1 while items are left', () {
+      final items = [
+        for (var i = 0; i < 201; i++)
+          QueueItem(
+            data: i,
+            batchId: 'batch',
+            status:
+                i < 200 ? QueueItemStatus.completed : QueueItemStatus.pending,
+          ),
+      ];
+
+      expect(items.progress, 0.99);
+      expect(items.summary, contains('Progress: 99%'));
     });
 
     test('rounds the progress in the summary', () {

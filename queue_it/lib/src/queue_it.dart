@@ -85,6 +85,11 @@ class QueueIt<T> {
   var _isSendingSnapshots = false;
 
   var _currentBatchId = const Uuid().v4();
+
+  /// Where the current batch starts in [_items]. Items are only added at the
+  /// end, and a batch only starts once every item has finished, so the
+  /// current batch is the end of the list.
+  var _batchStart = 0;
   var _isStarted = false;
   var _isProcessing = false;
   var _stopAutomatically = true;
@@ -109,8 +114,10 @@ class QueueIt<T> {
   /// it as failed.
   final int retries;
 
-  /// How long to wait before each retry. It's called with the number of the
-  /// retry, 1 for the first. Without it, failed items are retried right away.
+  /// How long to wait before each retry. It's called with the
+  /// [QueueItem.retryCount] the item will have: 1 for the first retry, plus
+  /// one for each time its handler sent it back with [QueueItem.nextStatus].
+  /// Without it, failed items are retried right away.
   ///
   /// The item waits as [QueueItemStatus.pending] without using one of the
   /// [parallel] slots. For example, to double the wait each time:
@@ -126,10 +133,10 @@ class QueueIt<T> {
   /// Decides whether to retry an item whose handler threw `error`. Without
   /// it, every failure is retried while [retries] last.
   ///
-  /// It isn't called once the retries are used up, or for attempts failed
-  /// through [QueueItem.nextStatus]. If it throws, the item isn't retried,
-  /// and the error is reported to the current [Zone] as an uncaught error,
-  /// like an error in a listener.
+  /// It isn't called once the retries are used up, or for attempts the
+  /// handler failed with `nextStatus = failed`. If it throws, the item isn't
+  /// retried, and the error is reported to the current [Zone] as an uncaught
+  /// error, like an error in a listener.
   final bool Function(Object error)? retryIf;
 
   /// Whether to use readable phrases as ids instead of UUIDs.
@@ -177,8 +184,9 @@ class QueueIt<T> {
   ///
   /// These are the queue's live items, in a lazy view of its list: copy it
   /// with `toList()` before changing the queue while iterating it.
-  Iterable<QueueItem<T>> items([String? batchId]) =>
-      _items.where((e) => batchId == null || e.batchId == batchId);
+  Iterable<QueueItem<T>> items([String? batchId]) => batchId == null
+      ? _items.where((item) => true)
+      : _BatchItems(this, batchId);
 
   /// A snapshot of the queue for every change, sent synchronously.
   ///
@@ -258,7 +266,10 @@ class QueueIt<T> {
       throw ArgumentError.value(
           id, 'id', 'The queue already has an item with this id');
     }
-    if (!_hasUnfinishedItems()) _currentBatchId = const Uuid().v4();
+    if (!_hasUnfinishedItems()) {
+      _currentBatchId = const Uuid().v4();
+      _batchStart = _items.length;
+    }
 
     final item = QueueItem(
       data: data,
@@ -296,6 +307,7 @@ class QueueIt<T> {
   void removeAll() {
     final removed = List.of(_items);
     _items.clear();
+    _batchStart = 0;
     _itemsById.clear();
     _waiting.clear();
     _waitingEntries.clear();
@@ -372,7 +384,8 @@ class QueueIt<T> {
   /// Stops the queue and closes [onUpdate].
   ///
   /// Handlers that are running keep running, but the queue ignores their
-  /// outcome. [running] completes, and futures from [waitFor] complete with a
+  /// outcome, so their items stay [QueueItemStatus.processing]. [running]
+  /// completes, and futures from [waitFor] complete with a
   /// [StateError]. The queue can't be started or added to afterwards.
   void dispose() {
     if (_isDisposing) return;
@@ -487,7 +500,9 @@ class QueueIt<T> {
 
   void _remove(QueueItem<T> item) {
     _itemsById.remove(item.id);
-    _items.remove(item);
+    final index = _items.indexOf(item);
+    _items.removeAt(index);
+    if (index < _batchStart) _batchStart--;
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
@@ -738,4 +753,23 @@ final class _WaitingItem<T> extends LinkedListEntry<_WaitingItem<T>> {
   _WaitingItem(this.item);
 
   final QueueItem<T> item;
+}
+
+/// The items of a batch: a lazy view of the queue's items. The current batch
+/// is the end of the list, so finding it doesn't go through the earlier
+/// batches.
+class _BatchItems<T> extends Iterable<QueueItem<T>> {
+  _BatchItems(this._queue, this._batchId);
+
+  final QueueIt<T> _queue;
+  final String _batchId;
+
+  @override
+  Iterator<QueueItem<T>> get iterator {
+    final start = _batchId == _queue._currentBatchId ? _queue._batchStart : 0;
+    return _queue._items
+        .skip(start)
+        .where((item) => item.batchId == _batchId)
+        .iterator;
+  }
 }

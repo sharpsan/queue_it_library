@@ -6,16 +6,17 @@ enum QueueItemStatus {
   /// Being processed: the queue's handler is running for the item.
   processing,
 
-  /// Processed successfully. Final.
+  /// Processed successfully. Final, unless the item is removed.
   completed,
 
-  /// The last attempt failed and no retries are left. Final.
+  /// The last attempt failed and no retries are left. Final, unless the item
+  /// is removed.
   ///
   /// Each failed attempt also passes through this status before the item goes
   /// back to [pending] for a retry.
   failed,
 
-  /// Canceled before it finished. Final.
+  /// Canceled before it finished. Final, unless the item is removed.
   canceled,
 
   /// Removed from the queue. Final.

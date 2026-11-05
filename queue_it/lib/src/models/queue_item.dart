@@ -6,7 +6,8 @@ import 'package:uuid/uuid.dart';
 ///
 /// The queue creates items when you add data to it and passes them to its
 /// item handler. The queue's own items are live: their status changes as the
-/// queue processes them. Snapshots hold copies, made with [copyWith].
+/// queue processes them. A snapshot's `eventItem` is a copy, made with
+/// [copyWith], and so are its `items` if the queue copies them.
 class QueueItem<T> {
   /// Creates an item with [status]. Without an [id], it gets a random UUID.
   QueueItem({
@@ -55,6 +56,8 @@ class QueueItem<T> {
   ///
   /// [QueueItemStatus.processing] isn't allowed: the attempt fails with a
   /// [StateError].
+  ///
+  /// If the handler throws, the attempt fails, whatever it set.
   QueueItemStatus? nextStatus;
 
   /// The error that made the item's last failed attempt fail, or null if no
