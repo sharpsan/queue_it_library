@@ -3,6 +3,20 @@ import 'package:test/test.dart';
 
 import 'helpers.dart';
 
+/// Allocates enough to make the VM collect garbage, old objects included.
+Future<void> _collectGarbage() async {
+  for (var round = 0; round < 2; round++) {
+    await wait(10);
+    for (var i = 0; i < 20; i++) {
+      var garbage = <List<int>>[];
+      for (var j = 0; j < 2000; j++) {
+        garbage.add(List<int>.filled(1000, j));
+      }
+      garbage = [];
+    }
+  }
+}
+
 void main() {
   late Gate<int> gate;
   late QueueIt<int> queue;
@@ -166,6 +180,50 @@ void main() {
       expect(queue.removeById(id), isFalse);
       expect(queue.removeById(queue.items().single.id), isTrue);
       expect(queue.items(), isEmpty);
+    });
+
+    test('lets go of the item right away', () async {
+      // A stopped queue with an item waiting in front of the removed ones.
+      final queue = QueueIt<List<int>>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue.add([0]);
+      WeakReference<List<int>> addAndRemove() {
+        final data = List<int>.filled(100000, 1);
+        queue.removeById(queue.add(data));
+        return WeakReference(data);
+      }
+
+      final removed = [for (var i = 0; i < 10; i++) addAndRemove()];
+      // Nothing holds these, so they show whether garbage collection ran.
+      final unused = [
+        for (var i = 0; i < 10; i++) WeakReference(List<int>.filled(100000, 1)),
+      ];
+      await _collectGarbage();
+
+      if (unused.any((reference) => reference.target != null)) {
+        markTestSkipped("Garbage collection didn't run.");
+        return;
+      }
+      expect(removed.where((reference) => reference.target != null), isEmpty);
+    });
+
+    test('takes about as long as adding, however many items there are', () {
+      // Removing items as they finish keeps a long-lived queue small.
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      const count = 50000;
+      final adding = Stopwatch()..start();
+      final ids = [for (var i = 0; i < count; i++) queue.add(i)];
+      adding.stop();
+
+      final removing = Stopwatch()..start();
+      ids.forEach(queue.removeById);
+      removing.stop();
+
+      expect(queue.items(), isEmpty);
+      // Before, each removal went through the list: about 100 times longer.
+      expect(removing.elapsedMicroseconds,
+          lessThan(adding.elapsedMicroseconds * 10 + 100000));
     });
   });
 

@@ -1,10 +1,11 @@
 name: Publish
 
-# Publishes a package to pub.dev from its release tag and creates its GitHub release:
-# queue_it-v0.10.0 is queue_it 0.10.0 and flutter_queue_it-v0.10.0 is flutter_queue_it 0.10.0.
-# The Release workflow creates the tags and runs this when main has a new version. It can also
-# be run by hand on a release tag. The tag has to match the version in the package's
-# pubspec.yaml, and the tag pattern set on the package's admin page on pub.dev.
+# Publishes queue_it and flutter_queue_it to pub.dev from a release tag, v<version>, and creates
+# the GitHub release. Both packages have the same version and are released together: both are
+# checked before either is uploaded, and a package that's on pub.dev already is skipped. The
+# Release workflow creates the tag and runs this when main has a new version. It can also be run
+# by hand on a release tag. The tag pattern on both packages' admin pages on pub.dev is
+# v{{version}}.
 on:
   workflow_dispatch:
 
@@ -16,33 +17,32 @@ jobs:
     name: Check the release
     runs-on: ubuntu-latest
     outputs:
-      package: ${{ steps.tag.outputs.package }}
       version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Match the tag to the package version
+      - name: Match the tag to the package versions
         id: tag
         run: |
-          package="${GITHUB_REF_NAME%-v*}"
-          version="${GITHUB_REF_NAME##*-v}"
-          case "$GITHUB_REF_TYPE:$package" in
-            tag:queue_it | tag:flutter_queue_it) ;;
+          case "$GITHUB_REF_TYPE:$GITHUB_REF_NAME" in
+            tag:v[0-9]*) ;;
             *)
-              echo "::error::Run this on a release tag, such as queue_it-v1.2.3, not the $GITHUB_REF_TYPE $GITHUB_REF_NAME."
+              echo "::error::Run this on a release tag, such as v1.2.3, not the $GITHUB_REF_TYPE $GITHUB_REF_NAME."
               exit 1
               ;;
           esac
-          pubspec_version="$(sed -n 's/^version: *//p' "$package/pubspec.yaml")"
-          if [ "$version" != "$pubspec_version" ]; then
-            echo "::error::$GITHUB_REF_NAME is for $package $version, but $package/pubspec.yaml has version $pubspec_version."
-            exit 1
-          fi
-          if ! grep -qxF "## $version" "$package/CHANGELOG.md"; then
-            echo "::error::$package/CHANGELOG.md has no \"## $version\" section."
-            exit 1
-          fi
-          echo "package=$package" >> "$GITHUB_OUTPUT"
+          version="${GITHUB_REF_NAME#v}"
+          for package in queue_it flutter_queue_it; do
+            pubspec_version="$(sed -n 's/^version: *//p' "$package/pubspec.yaml")"
+            if [ "$version" != "$pubspec_version" ]; then
+              echo "::error::$GITHUB_REF_NAME is for $version, but $package/pubspec.yaml has version $pubspec_version."
+              exit 1
+            fi
+            if ! grep -qxF "## $version" "$package/CHANGELOG.md"; then
+              echo "::error::$package/CHANGELOG.md has no \"## $version\" section."
+              exit 1
+            fi
+          done
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: subosito/flutter-action@v2
@@ -50,27 +50,24 @@ jobs:
           channel: stable
           cache: true
 
-      # Resolves the package on its own, the way it resolves for users. flutter_queue_it fails
-      # here until the queue_it it needs is on pub.dev.
-      - name: Check the dependencies are on pub.dev
-        env:
-          PACKAGE: ${{ steps.tag.outputs.package }}
-        run: |
-          mkdir "$RUNNER_TEMP/resolve"
-          sed '/^resolution: workspace$/d' "$PACKAGE/pubspec.yaml" > "$RUNNER_TEMP/resolve/pubspec.yaml"
-          cd "$RUNNER_TEMP/resolve"
-          flutter pub get
-
+      # One resolution for the workspace, which checks that flutter_queue_it accepts this
+      # queue_it. flutter_queue_it can't be resolved from pub.dev yet: the queue_it it needs is
+      # uploaded in this run.
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Test
-        working-directory: ${{ steps.tag.outputs.package }}
+      - name: Test queue_it
+        working-directory: queue_it
+        run: flutter test
+
+      - name: Test flutter_queue_it
+        working-directory: flutter_queue_it
         run: flutter test
 
       - name: Check publishing
-        working-directory: ${{ steps.tag.outputs.package }}
-        run: flutter pub publish --dry-run
+        run: |
+          (cd queue_it && flutter pub publish --dry-run)
+          (cd flutter_queue_it && flutter pub publish --dry-run)
 
   publish:
     name: Publish to pub.dev
@@ -80,6 +77,8 @@ jobs:
     permissions:
       contents: read
       id-token: write # pub.dev authenticates the run with GitHub's OIDC token
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -94,9 +93,38 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      # queue_it first, since flutter_queue_it depends on it. An upload that fails is tried
+      # again, unless it went through after all.
       - name: Publish
-        working-directory: ${{ needs.check.outputs.package }}
-        run: flutter pub publish --force
+        run: |
+          on_pub_dev() {
+            curl -sf -o /dev/null "https://pub.dev/api/packages/$1/versions/$VERSION"
+          }
+          upload() {
+            for attempt in 1 2 3; do
+              if (cd "$1" && flutter pub publish --force); then
+                return 0
+              fi
+              if on_pub_dev "$1"; then
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "Trying again in 15 seconds."
+                sleep 15
+              fi
+            done
+            return 1
+          }
+          for package in queue_it flutter_queue_it; do
+            if on_pub_dev "$package"; then
+              echo "$package $VERSION is on pub.dev already."
+            elif upload "$package"; then
+              echo "Published $package $VERSION."
+            else
+              echo "::error::Couldn't publish $package $VERSION."
+              exit 1
+            fi
+          done
 
   github-release:
     name: Create the GitHub release
@@ -107,24 +135,26 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PACKAGE: ${{ needs.check.outputs.package }}
       VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
-      # The notes are the version's CHANGELOG entry.
+      # The notes are both packages' CHANGELOG entries for the version.
       - name: Create the release
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             echo "$GITHUB_REF_NAME has a release already."
             exit 0
           fi
-          awk -v heading="## $VERSION" '$0 == heading { on = 1; next } /^## / { on = 0 } on' \
-            "$PACKAGE/CHANGELOG.md" > "$RUNNER_TEMP/notes.md"
-          printf '\nhttps://pub.dev/packages/%s/versions/%s\n' "$PACKAGE" "$VERSION" >> "$RUNNER_TEMP/notes.md"
+          for package in queue_it flutter_queue_it; do
+            printf '## %s\n' "$package"
+            awk -v heading="## $VERSION" '$0 == heading { on = 1; next } /^## / { on = 0 } on' \
+              "$package/CHANGELOG.md"
+            printf '\nhttps://pub.dev/packages/%s/versions/%s\n\n' "$package" "$VERSION"
+          done > "$RUNNER_TEMP/notes.md"
           case "$VERSION" in
             *-*) prerelease=--prerelease ;;
             *) prerelease= ;;
           esac
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$PACKAGE $VERSION" \
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md" $prerelease

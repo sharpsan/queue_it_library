@@ -19,7 +19,8 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
         (item) => item.status == QueueItemStatus.completed,
       );
 
-  /// The items that failed with no retries left.
+  /// The items that failed with no retries left. During the `failed` update
+  /// of an attempt that will be retried, that item is here too.
   Iterable<QueueItem<T>> get failed => where(
         (item) => item.status == QueueItemStatus.failed,
       );
@@ -35,17 +36,21 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
 
   /// The share of the items that have finished, from 0 to 1, rounded to two
   /// decimal places. Items that are pending or processing haven't finished.
-  /// It's 1 when there are no items.
+  /// It's 1 only when every item has finished, or when there are no items.
+  /// During the `failed` update of an attempt that will be retried, that item
+  /// counts as finished.
   double get progress {
     if (isEmpty) return 1;
     final inProgressTotal = processing.length + pending.length;
     if (inProgressTotal == 0) return 1;
     final percentage = 1 - (inProgressTotal / length);
-    // round to 2 decimal places;
-    return double.parse(percentage.toStringAsFixed(2));
+    // Round to 2 decimal places, short of 1 while items are left.
+    final rounded = double.parse(percentage.toStringAsFixed(2));
+    return rounded < 1 ? rounded : 0.99;
   }
 
-  /// A few lines counting the items in each status, and the progress.
+  /// A few lines counting the items and the pending, processing, completed,
+  /// failed and canceled ones, and the progress.
   String get summary {
     final s = StringBuffer();
     s.writeln('Total: $length');
@@ -54,7 +59,7 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
     s.writeln('Completed: ${completed.length}');
     s.writeln('Failed: ${failed.length}');
     s.writeln('Cancelled: ${canceled.length}');
-    s.writeln('Progress: ${progress * 100}%');
+    s.writeln('Progress: ${(progress * 100).round()}%');
     return s.toString();
   }
 }

@@ -130,6 +130,30 @@ void main() {
     }, () => server.client);
   });
 
+  testWidgets('removes two images swiped one after the other', (tester) async {
+    final server = _Server();
+    await http.runWithClient(() async {
+      example.main();
+      await tester.pump();
+      await tester.tap(find.byTooltip('Add five images'));
+      await tester.pump();
+      final titles = [
+        for (final tile in tester.widgetList<ListTile>(find.byType(ListTile)))
+          (tile.title! as Text).data!,
+      ];
+
+      // The second swipe starts while the first image is still going away.
+      await tester.drag(find.byType(Dismissible).at(0), const Offset(-800, 0));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.drag(find.byType(Dismissible).at(1), const Offset(-800, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text(titles[0]), findsNothing);
+      expect(find.text(titles[1]), findsNothing);
+      expect(find.byType(ListTile), findsNWidgets(3));
+    }, () => server.client);
+  });
+
   testWidgets('cancels and removes images', (tester) async {
     final server = _Server();
     await http.runWithClient(() async {
@@ -170,6 +194,24 @@ void main() {
       expect(subtitles.where(_isFinished), hasLength(2));
 
       await _pumpSnackBars(tester);
+      await tester.tap(find.byTooltip('Stop the queue'));
+      await tester.pump();
+
+      // The canceled and removed images' handlers wait out their delay, up
+      // to 2 s, before they see they're done.
+      await tester.pump(const Duration(seconds: 2));
+
+      // Starting the queue again rebuilds the list. The canceled images
+      // weren't downloaded after all.
+      await tester.tap(find.byTooltip('Start the queue'));
+      await tester.pump();
+      for (final tile in [
+        find.byType(ListTile).first,
+        find.byType(ListTile).last,
+      ]) {
+        expect(find.descendant(of: tile, matching: find.byType(Image)),
+            findsNothing);
+      }
       await tester.tap(find.byTooltip('Stop the queue'));
       await tester.pump();
     }, () => server.client);

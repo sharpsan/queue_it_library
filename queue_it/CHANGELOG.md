@@ -1,3 +1,55 @@
+## 0.10.1
+
+* Fix: `waitFor` gives the item as it finished, even when a listener then removes the item or
+  disposes the queue, or adds a new item with the same id.
+* Fix: `waitFor` fails with a `StateError` when it's called after `dispose` for an item that
+  hasn't finished, instead of never completing.
+* Fix: in the `failed` update of an attempt that will be retried, `waitFor` waits for the retry,
+  and `cancel` cancels the item instead of returning false.
+* Fix: disposing the queue from a listener as an item fails no longer leaves its retry timer
+  running.
+* Fix: items waiting to be retried are retried in the order they're due, instead of the newest
+  first.
+* Fix: once a listener disposes the queue, other listeners' calls to it send no more updates, as
+  after any other `dispose`.
+* Fix: `running` completes when the queue stops with no handlers running, even if a listener
+  starts it again right away.
+* Fix: an item being retried stays in its batch when a listener adds an item during its `failed`
+  or `pending` update, and a canceled item whose handler is still running no longer keeps its
+  batch open.
+* Fix: removed items are let go right away, instead of staying in memory while the queue is
+  stopped.
+* Fix: an item added by a `stoppedProcessing` listener is processed, instead of waiting for the
+  next `start`.
+* Fix: a queue that stops automatically also stops when its items are all canceled or removed
+  before it gets to them, so `running` completes.
+* Fix: a queue that a `stoppedProcessing` listener stops and starts again waits for new items,
+  instead of stopping right away.
+* Fix: a queue started while only the handlers of canceled items are running waits for new items,
+  instead of stopping when those handlers return.
+* Fix: an item's handler no longer starts when a listener disposes the queue as the item starts
+  processing.
+* Fix: after `dispose`, `isProcessing` becomes false once the running handlers return, and
+  listeners can't start the queue again.
+* Fix: removing items one at a time no longer slows down as the queue grows (80,000 items took
+  39 s; now well under a second).
+* Fix: calling the queue after `dispose` no longer throws while an `onUpdate` listener is paused,
+  for example by `asyncMap` or an `await for` loop that's awaiting.
+* Fix: the constructor throws an `ArgumentError` for a `parallel` below 1 or negative `retries`.
+  These were only asserts, so a release build with `parallel: 0` never processed anything.
+* Fix: a long run of items whose handler throws right away, without being `async`, no longer
+  overflows the stack and leaves the queue stuck.
+* Fix: `summary` rounds the progress, and `progress` is only 1 once every item has finished,
+  instead of rounding up to 1 with items left.
+* Fix: with `deepCopyItemsInSnapshot`, each update costs time in proportion to the current batch,
+  as documented, instead of to every item the queue holds. `currentBatchItems` is faster too when
+  the queue keeps the items of earlier batches.
+* Docs: an error thrown by `retryIf` or `retryDelay` is reported as an uncaught error, and the item
+  isn't retried.
+* Docs: corrections about which statuses are final, what snapshots copy, what `retryDelay` is
+  called with, and what `summary` counts. `nextStatus = pending` tries again before timers and I/O
+  get to run, so a handler waiting for something should await it first.
+
 ## 0.10.0
 
 * Requires Dart 3.5 or later.

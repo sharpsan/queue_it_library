@@ -38,13 +38,19 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
     await Future<void>.delayed(
       Duration(milliseconds: 500 + _random.nextInt(1500)),
     );
+    // The queue doesn't stop a handler when its image is canceled or removed,
+    // so check before going on.
+    if (item.status != QueueItemStatus.processing) return;
     if (_random.nextDouble() < 0.3) {
       throw Exception('Simulated network error');
     }
-    final response = await http.get(Uri.parse(item.data));
+    final response = await http
+        .get(Uri.parse(item.data))
+        .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
     }
+    if (item.status != QueueItemStatus.processing) return;
     _images[item.id] = response.bodyBytes;
   }
 
@@ -124,6 +130,15 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
                           itemCount: items.length,
                           itemBuilder: (context, index) =>
                               _buildItem(items[index]),
+                          // Match the tiles to their images, so the ones below
+                          // a removed image keep their state, like a swipe in
+                          // progress.
+                          findChildIndexCallback: (key) {
+                            final index = items.indexWhere(
+                              (item) => ValueKey(item.id) == key,
+                            );
+                            return index < 0 ? null : index;
+                          },
                         ),
                 ),
               ],

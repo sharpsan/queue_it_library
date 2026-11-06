@@ -33,13 +33,16 @@ the workspace with `tool/leave_workspace.sh` and testing them on Flutter 3.24.5.
 
 ## Releasing
 
-Pushing to `main` releases every package whose version isn't on pub.dev yet. To release one, bump
-the version in its `pubspec.yaml`, add a matching section to its `CHANGELOG.md` and push to `main`.
+queue_it and flutter_queue_it always have the same version and are released together, even when
+only one of them changed. To release, bump the version in both `pubspec.yaml` files, add a section
+for it to both `CHANGELOG.md` files and push to `main`.
 
-Once CI passes, the Release workflow tags the commit (`queue_it-v0.10.0`,
-`flutter_queue_it-v0.10.0`) and runs the Publish workflow on each tag, queue_it first. Publish
-tests the package, publishes it to pub.dev and creates a GitHub release from its changelog.
+Once CI passes, the Release workflow tags the commit (`v0.11.0`) and runs the Publish workflow on
+the tag. Publish checks and tests both packages before it uploads either, then publishes queue_it
+and flutter_queue_it to pub.dev and creates a GitHub release with both changelogs.
 
-If publishing fails, fix it and push to `main` again: a version that never made it to pub.dev
-gets its tag moved to the new commit. Publish can also be run by hand on a release tag from the
-Actions tab.
+If something fails, fix it and push to `main` again: the tag of a version that isn't fully
+released moves to the new commit, and a package that's on pub.dev already isn't uploaded again.
+Publish can also be run by hand on a release tag from the Actions tab. That's the way to retry
+when both packages made it to pub.dev but the GitHub release didn't, because pushing again does
+nothing once the version is on pub.dev.

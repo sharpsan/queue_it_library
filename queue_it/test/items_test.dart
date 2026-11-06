@@ -77,6 +77,153 @@ void main() {
 
       expect(queue.currentBatchId, first);
     });
+
+    test('are found after earlier items are removed', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      final snapshots = <QueueSnapshot<int>>[];
+      queue.onUpdate.listen(snapshots.add);
+      final first = queue.add(1);
+      queue
+        ..add(2)
+        ..start();
+      await queue.running;
+      final firstBatch = queue.currentBatchId;
+      final firstBatchSnapshot = snapshots.last;
+
+      queue
+        ..add(3)
+        ..add(4)
+        ..removeById(first)
+        ..add(5);
+
+      expect(queue.currentBatchItems.map((item) => item.data), [3, 4, 5]);
+      expect(snapshots.last.items.map((item) => item.data), [3, 4, 5]);
+      expect(queue.items(firstBatch).map((item) => item.data), [2]);
+      // A snapshot's items stay those of its batch.
+      expect(firstBatchSnapshot.items.map((item) => item.data), [2]);
+
+      queue
+        ..removeAll()
+        ..add(6);
+      expect(queue.currentBatchItems.map((item) => item.data), [6]);
+    });
+
+    test('throw when the queue changes while the current batch is iterated',
+        () {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      for (var i = 0; i < 3; i++) {
+        queue.add(i);
+      }
+
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          queue.remove(item);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+      var visited = 0;
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          if (++visited > 100) break;
+          queue.add(item.data + 10);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+      // Removing an item and adding one with its id is a change too.
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          queue
+            ..remove(item)
+            ..add(item.data, id: item.id);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+    });
+
+    test('keep an item that is about to be retried', () async {
+      final queue = QueueIt<int>(
+        retries: 1,
+        itemHandler: (item) {
+          if (item.data == 1 && item.retryCount == 0) {
+            throw Exception('flaky');
+          }
+        },
+      );
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.data != 1) return;
+        // While the first attempt's failed and pending events are sent.
+        if (item!.status == QueueItemStatus.failed) queue.add(2);
+        if (item.status == QueueItemStatus.pending && item.retryCount == 1) {
+          queue.add(3);
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed', '3:completed']);
+      expect(queue.items().map((item) => item.batchId).toSet(),
+          {queue.currentBatchId});
+    });
+
+    test('keep an item that its handler sends back to pending', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {
+        if (item.data == 1 && item.retryCount == 0) {
+          item.nextStatus = QueueItemStatus.pending;
+        }
+      });
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.data == 1 && item?.status == QueueItemStatus.pending) {
+          if (item!.retryCount == 1) queue.add(2);
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed']);
+      expect(queue.currentBatchItems.map((item) => item.data), [1, 2]);
+    });
+
+    test('keep an item that is about to start', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing &&
+            queue.items().length == 1) {
+          queue.add(2);
+        }
+      });
+      queue
+        ..add(1)
+        ..start();
+      await queue.running;
+
+      expect(statuses(queue), ['1:completed', '2:completed']);
+      expect(queue.items().map((item) => item.batchId).toSet(),
+          {queue.currentBatchId});
+    });
+
+    test("don't wait for the handler of a canceled item", () async {
+      final gate = Gate<int>();
+      final queue = QueueIt<int>(itemHandler: gate.call);
+      addTearDown(queue.dispose);
+      final id = queue.add(1);
+      final first = queue.currentBatchId;
+      queue.start();
+      await wait();
+      queue.cancelById(id);
+
+      queue.add(2);
+
+      expect(queue.currentBatchId, isNot(first));
+      gate.release(1);
+    });
   });
 
   group('nextStatus', () {
@@ -239,6 +386,102 @@ void main() {
 
       expect(finished, throwsStateError);
     });
+
+    test('fails when called after the queue is disposed', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      final id = queue.add(1);
+
+      queue.dispose();
+
+      await expectLater(
+        queue.waitFor(id).timeout(const Duration(seconds: 1)),
+        throwsStateError,
+      );
+    });
+
+    test("fails when called by a listener of the disposed queue's last events",
+        () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      final id = queue.add(1);
+      final waited = <Future<QueueItem<int>>>[];
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedQueue) queue.dispose();
+        // Sent after startedQueue has reached the listeners, so after dispose.
+        if (snapshot.event == QueueEvent.stoppedQueue) {
+          waited.add(queue.waitFor(id));
+        }
+      });
+
+      queue.start();
+
+      await expectLater(
+        waited.single.timeout(const Duration(seconds: 1)),
+        throwsStateError,
+      );
+    });
+
+    test('gives the item as it finished, whatever the listeners do then',
+        () async {
+      final queue = QueueIt<int>(itemHandler: (item) {
+        if (item.data == 2) throw Exception('failed');
+      });
+      addTearDown(queue.dispose);
+      // Removes the items as they finish.
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        if (item?.status == QueueItemStatus.completed ||
+            item?.status == QueueItemStatus.failed) {
+          queue.remove(item!);
+        }
+      });
+      final completed = queue.waitFor(queue.add(1));
+      final failed = queue.waitFor(queue.add(2));
+
+      queue.start();
+
+      expect((await completed).status, QueueItemStatus.completed);
+      expect((await failed).status, QueueItemStatus.failed);
+      expect(queue.items(), isEmpty);
+    });
+
+    test('gives the item as it finished when a listener then disposes',
+        () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.eventItem?.status == QueueItemStatus.completed) {
+          queue.dispose();
+        }
+      });
+      final finished = queue.waitFor(queue.add(1));
+
+      queue.start();
+
+      expect((await finished).status, QueueItemStatus.completed);
+    });
+
+    test('waits for a new item with the id of a removed one', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue.add(1, id: 'a');
+      final first = queue.waitFor('a');
+      final waited = <Future<QueueItem<int>>>[];
+      // Moves the item to the back of the queue, under the same id.
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.itemRemoved) {
+          queue.add(2, id: 'a');
+          waited.add(queue.waitFor('a'));
+        }
+      });
+
+      queue
+        ..removeById('a')
+        ..start();
+
+      expect((await first).data, 1);
+      final second = await waited.single;
+      expect(second.data, 2);
+      expect(second.status, QueueItemStatus.completed);
+    });
   });
 
   test('toString describes the queue, its items and its snapshots', () async {
@@ -284,6 +527,34 @@ void main() {
       expect(items.summary, contains('Failed: 1'));
       // ignore: deprecated_member_use_from_same_package
       expect(items.cancelled, items.canceled);
+    });
+
+    test('keeps the progress short of 1 while items are left', () {
+      final items = [
+        for (var i = 0; i < 201; i++)
+          QueueItem(
+            data: i,
+            batchId: 'batch',
+            status:
+                i < 200 ? QueueItemStatus.completed : QueueItemStatus.pending,
+          ),
+      ];
+
+      expect(items.progress, 0.99);
+      expect(items.summary, contains('Progress: 99%'));
+    });
+
+    test('rounds the progress in the summary', () {
+      final items = [
+        for (var i = 0; i < 7; i++)
+          QueueItem(
+            data: i,
+            batchId: 'batch',
+            status: i < 2 ? QueueItemStatus.completed : QueueItemStatus.pending,
+          ),
+      ];
+
+      expect(items.summary, contains('Progress: 29%'));
     });
   });
 }

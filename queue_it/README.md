@@ -88,8 +88,9 @@ QueueItWidget(
 ### Starting and stopping
 
 `start()` processes items in the order they were added, `parallel` at a time. By default the queue
-stops by itself once every item is processed, and items added after that wait for the next
-`start()`. If you start a queue with no items, it waits for its first one.
+stops by itself once it runs out of items, whether they were processed, canceled or removed, and
+items added after that wait for the next `start()`. If you start a queue with no items, it waits for
+its first one.
 
 ```dart
 /// Keep the queue running, so items added later are processed right away
@@ -135,8 +136,8 @@ print(items.summary);
 
 ### Retries
 
-When the item handler throws, the item is retried up to `retries` times, ahead of the other pending
-items. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
+When the item handler throws, the item is retried up to `retries` times. Retries go ahead of the
+other pending items, in the order they're due. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
 tell you why.
 
 ```dart
@@ -154,7 +155,8 @@ final queue = QueueIt<Uri>(
 ```
 
 The item handler can also set `item.nextStatus` to choose what happens to the item when it returns,
-for example `QueueItemStatus.pending` to process it again later.
+for example `QueueItemStatus.pending` to process it again later. And a listener can cancel an item
+in its `failed` update, so it isn't retried.
 
 ### Canceling and removing items
 
@@ -240,7 +242,8 @@ For a more in-depth look at how to use QueueIt, check out the
 - `add` and `start` throw a `StateError` once the queue is disposed.
 - `cancel` only cancels pending and processing items, and returns `false` for items that have
   already finished.
-- A new batch starts as soon as every item has finished, instead of only when the queue is empty.
+- The first item added after every item has finished starts a new batch, instead of only when the
+  queue is empty.
 - Canceled and removed items now stay that way, even if they were processing at the time.
 - `onUpdate` listeners can now call the queue. If you delayed those calls to get around the
   `Cannot fire new event` error, you don't need to anymore.

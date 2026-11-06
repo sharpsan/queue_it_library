@@ -66,8 +66,12 @@ class _UploadsPageState extends State<UploadsPage> {
           final items = _queue.items().toList();
           return Column(
             children: [
+              /// The progress of the current batch: the uploads added since the
+              /// queue last ran out of work
               if (_queue.isProcessing)
-                LinearProgressIndicator(value: items.progress),
+                LinearProgressIndicator(
+                  value: _queue.currentBatchItems.progress,
+                ),
               Expanded(
                 child: ListView.builder(
                   itemCount: items.length,
@@ -125,8 +129,11 @@ Flutter can call it at other times. Use `QueueItListener` instead:
 QueueItListener(
   queue: _queue,
   listener: (context, snapshot) {
-    /// `listener` will be called once for every update, without rebuilding
-    if (snapshot.event == QueueEvent.stoppedProcessing) {
+    /// `listener` will be called once for every update, without rebuilding.
+    /// Processing also stops when the queue is stopped, so check that no
+    /// uploads are left
+    if (snapshot.event == QueueEvent.stoppedProcessing &&
+        snapshot.items.pending.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('All uploads processed')),
       );
@@ -136,22 +143,29 @@ QueueItListener(
 );
 ```
 
-The listener can call the queue too.
+The listener can call the queue too. It's called as soon as the queue sends an update. Updates sent
+while Flutter is building or disposing widgets, for example from a widget's `initState` or
+`dispose`, reach the listener right after that frame, so it can still show a SnackBar. Once the
+widget is being removed, the listener isn't called any more.
 
 ### Good to know
 
 - The first build gets a null `snapshot`. The queue doesn't replay updates sent before the widget
   started listening, so read the current state from the queue itself: `queue.items()`,
   `queue.isStarted` and `queue.isProcessing` are always up to date.
-- Updates sent in the same frame cause a single rebuild with the latest snapshot.
+- Updates sent in the same frame cause a single rebuild with the latest snapshot. Updates sent
+  while Flutter is building, for example from a widget's `initState` or `dispose`, rebuild the
+  widget right after that frame.
 - `snapshot.event` tells you what happened, and `snapshot.eventItem` is a copy of the item the
   update is about, taken at that moment. `snapshot.items` holds the queue's own items, so they show
-  each item's current status, unless the queue was created with `deepCopyItemsInSnapshot: true`.
+  each item's current status (and leave out the ones removed since), unless the queue was created
+  with `deepCopyItemsInSnapshot: true`.
 - The widgets never start, stop or dispose of the queue. Keep the queue somewhere that outlives
   rebuilds, like a `State`, and call `dispose()` on it when you're done.
 - Any number of widgets can listen to the same queue, such as a list and a counter in the app bar.
 - If a rebuild passes a different queue, the widgets switch to it. Until the new queue changes,
-  `builder` still gets the old queue's last snapshot.
+  `builder` still gets the old queue's last snapshot. Updates from the old queue that were still
+  waiting for the end of the frame don't reach `listener`.
 
 ### Migrating from 0.9
 

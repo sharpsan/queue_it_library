@@ -203,6 +203,121 @@ void main() {
     await queue.running;
   });
 
+  test('refuses a parallel below 1 and negative retries', () {
+    expect(() => QueueIt<int>(parallel: 0, itemHandler: (item) {}),
+        throwsArgumentError);
+    expect(() => QueueIt<int>(retries: -1, itemHandler: (item) {}),
+        throwsArgumentError);
+  });
+
+  test('handles a long run of handlers that throw right away', () async {
+    // Not async: the handler throws before returning a future.
+    final queue = QueueIt<int>(
+      itemHandler: (item) => throw FormatException('bad ${item.data}'),
+    );
+    addTearDown(queue.dispose);
+    queue.onUpdate.listen((snapshot) {});
+    for (var i = 0; i < 20000; i++) {
+      queue.add(i);
+    }
+
+    queue.start();
+    await queue.running.timeout(const Duration(seconds: 30));
+
+    expect(queue.isProcessing, isFalse);
+    expect(queue.items().failed, hasLength(20000));
+  });
+
+  test('processes an item added as processing stops', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.stoppedProcessing &&
+          queue.items().length == 1) {
+        queue.add(2);
+      }
+    });
+
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    expect(statuses(queue), ['1:completed', '2:completed']);
+    expect(queue.isStarted, isFalse);
+  });
+
+  test('waits for items when a listener starts it again as it stops', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    var restarted = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.stoppedProcessing && !restarted) {
+        restarted = true;
+        queue
+          ..stop()
+          ..start();
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+    await wait(10);
+    expect(queue.isStarted, isTrue);
+
+    queue.add(2);
+    await queue.running;
+
+    expect(statuses(queue), ['1:completed', '2:completed']);
+    expect(queue.isStarted, isFalse);
+  });
+
+  test('completes running when a listener starts it again as it stops',
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    var restarted = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.stoppedQueue && !restarted) {
+        restarted = true;
+        queue.start();
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+
+    await queue.running.timeout(const Duration(seconds: 1));
+    expect(restarted, isTrue);
+    expect(queue.isStarted, isTrue);
+  });
+
+  test(
+      'stops by itself when its items are canceled or removed before it '
+      'gets to them', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    final first = queue.add(1);
+    final second = queue.add(2);
+
+    queue
+      ..start()
+      ..cancelById(first)
+      ..removeById(second);
+
+    await queue.running.timeout(const Duration(seconds: 1));
+    expect(queue.isStarted, isFalse);
+    expect(events, [
+      'itemAdded:1:pending',
+      'itemAdded:2:pending',
+      'startedQueue',
+      'itemStatusUpdated:1:canceled',
+      'itemRemoved:2:removed',
+      'stoppedQueue',
+    ]);
+  });
+
   group('stop', () {
     test('lets running items finish and leaves the rest pending', () async {
       final gate = Gate<int>();
@@ -305,5 +420,127 @@ void main() {
       expect(queue.start, throwsStateError);
       expect(queue.dispose, returnsNormally);
     });
+
+    test('settles isProcessing once the running handlers return', () async {
+      final gate = Gate<int>();
+      final queue = QueueIt<int>(itemHandler: gate.call);
+      queue
+        ..add(1)
+        ..start();
+      await wait();
+      expect(queue.isProcessing, isTrue);
+
+      queue.dispose();
+      gate.release(1);
+      await wait();
+
+      expect(queue.isProcessing, isFalse);
+    });
+
+    test(
+        'settles isProcessing when a listener disposes it as processing '
+        'starts', () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.startedProcessing) queue.dispose();
+      });
+      queue
+        ..add(1)
+        ..start();
+      await wait();
+
+      expect(queue.isStarted, isFalse);
+      expect(queue.isProcessing, isFalse);
+      expect(statuses(queue), ['1:pending']);
+    });
+
+    test("can't be started again by a listener", () {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      final errors = <Object>[];
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.event == QueueEvent.stoppedQueue) {
+          try {
+            queue.start();
+          } on StateError catch (error) {
+            errors.add(error);
+          }
+        }
+      });
+      queue.start(stopAutomatically: false);
+
+      queue.dispose();
+
+      expect(queue.isStarted, isFalse);
+      expect(errors, [isA<StateError>()]);
+    });
+  });
+
+  test('stops by itself once a retry it was restarted for is canceled',
+      () async {
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (retry) => const Duration(milliseconds: 50),
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    // Restarted as the first attempt fails.
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed && item!.retryCount == 0) {
+        queue
+          ..stop()
+          ..start();
+      }
+    });
+    final id = queue.add(1);
+    queue.start();
+    await wait(10);
+    expect(queue.isStarted, isTrue);
+
+    expect(queue.cancelById(id), isTrue);
+
+    await queue.running.timeout(const Duration(seconds: 1));
+    expect(queue.isStarted, isFalse);
+  });
+
+  test('waits for items when started while only a canceled handler runs',
+      () async {
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(itemHandler: gate.call);
+    addTearDown(queue.dispose);
+    final first = queue.add(1);
+    queue.start();
+    await wait();
+    queue
+      ..stop()
+      ..cancelById(first)
+      ..start();
+
+    gate.release(1);
+    await wait(10);
+
+    expect(queue.isStarted, isTrue);
+    queue.add(2);
+    await wait();
+    expect(gate.started, [1, 2]);
+    gate.release(2);
+  });
+
+  test("doesn't start a handler once a listener disposes the queue", () async {
+    final started = <int>[];
+    final queue = QueueIt<int>(itemHandler: (item) => started.add(item.data));
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.eventItem?.status == QueueItemStatus.processing) {
+        queue.dispose();
+      }
+    });
+
+    queue
+      ..add(1)
+      ..start();
+    await wait();
+
+    expect(started, isEmpty);
+    expect(queue.isProcessing, isFalse);
   });
 }

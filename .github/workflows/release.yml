@@ -1,9 +1,9 @@
 name: Release
 
-# Once CI passes on a push to main, releases each package whose version isn't on pub.dev yet:
-# tags the commit <package>-v<version> and runs the Publish workflow on the tag, which publishes
-# the package and creates its GitHub release. queue_it goes first, and each package waits for
-# the one before it to be on pub.dev.
+# Once CI passes on a push to main, releases queue_it and flutter_queue_it if their version
+# isn't on pub.dev yet. They always have the same version and are released together: this tags
+# the commit v<version> and runs the Publish workflow on the tag, which checks both packages,
+# publishes them and creates the GitHub release.
 on:
   workflow_run:
     workflows: [CI]
@@ -20,11 +20,11 @@ concurrency:
 
 jobs:
   release:
-    name: Tag and publish new versions
+    name: Tag and publish a new version
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # creates the tags
+      contents: write # creates the tag
       actions: write # runs the Publish workflow
     env:
       GH_TOKEN: ${{ github.token }}
@@ -37,68 +37,61 @@ jobs:
 
       - name: Tag and publish
         run: |
-          # The Publish runs for $tag that haven't finished: on this commit (true) or others (false).
+          version="$(sed -n 's/^version: *//p' queue_it/pubspec.yaml)"
+          flutter_version="$(sed -n 's/^version: *//p' flutter_queue_it/pubspec.yaml)"
+          if [ "$version" != "$flutter_version" ]; then
+            echo "::error::queue_it is $version but flutter_queue_it is $flutter_version. They're released together, so they need the same version."
+            exit 1
+          fi
+          if curl -sf -o /dev/null "https://pub.dev/api/packages/queue_it/versions/$version" &&
+            curl -sf -o /dev/null "https://pub.dev/api/packages/flutter_queue_it/versions/$version"; then
+            echo "$version is on pub.dev already."
+            exit 0
+          fi
+          tag="v$version"
+
+          # The Publish runs for the tag that haven't finished: on this commit (true) or others (false).
           unfinished_runs() {
             gh run list --workflow publish.yml --branch "$tag" --json databaseId,status,headSha \
               --jq ".[] | select(.status != \"completed\" and (.headSha == \"$SHA\") == $1) | .databaseId"
           }
 
-          for package in queue_it flutter_queue_it; do
-            version="$(sed -n 's/^version: *//p' "$package/pubspec.yaml")"
-            tag="$package-v$version"
-            if curl -sf -o /dev/null "https://pub.dev/api/packages/$package/versions/$version"; then
-              echo "$package $version is on pub.dev already."
-              continue
-            fi
+          tagged="$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" | tail -n 1 | cut -f 1)"
+          if [ -z "$tagged" ]; then
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA" > /dev/null
+            echo "Tagged $SHA as $tag."
+          elif [ "$tagged" != "$SHA" ]; then
+            # The version isn't fully released, so the tag moves to this commit, and runs on the
+            # old one stop.
+            for run in $(unfinished_runs false); do
+              gh run cancel "$run"
+            done
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$tag" -f sha="$SHA" -F force=true > /dev/null
+            echo "Moved $tag from $tagged to $SHA."
+          fi
 
-            tagged="$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" | tail -n 1 | cut -f 1)"
-            if [ -z "$tagged" ]; then
-              gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA" > /dev/null
-              echo "Tagged $SHA as $tag."
-            elif [ "$tagged" != "$SHA" ]; then
-              # It was never published, so it moves to this commit, and runs on the old one stop.
-              for run in $(unfinished_runs false); do
-                gh run cancel "$run"
-              done
-              gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$tag" -f sha="$SHA" -F force=true > /dev/null
-              echo "Moved $tag from $tagged to $SHA."
-            fi
-
-            # Waits for a Publish run that's already going on this commit, or starts one.
+          # Waits for a Publish run that's already going on this commit, or starts one.
+          run="$(unfinished_runs true | head -n 1)"
+          if [ -z "$run" ]; then
+            run="$(gh api "repos/$GH_REPO/actions/workflows/publish.yml/dispatches" \
+              -f ref="$tag" -F return_run_details=true --jq '.workflow_run_id // empty')"
+          fi
+          # GitHub doesn't always say which run it started.
+          tries=0
+          while [ -z "$run" ] && [ "$tries" -lt 20 ]; do
+            sleep 3
+            tries=$((tries + 1))
             run="$(unfinished_runs true | head -n 1)"
-            if [ -z "$run" ]; then
-              run="$(gh api "repos/$GH_REPO/actions/workflows/publish.yml/dispatches" \
-                -f ref="$tag" -F return_run_details=true --jq '.workflow_run_id // empty')"
-            fi
-            # GitHub doesn't always say which run it started.
-            tries=0
-            while [ -z "$run" ] && [ "$tries" -lt 20 ]; do
-              sleep 3
-              tries=$((tries + 1))
-              run="$(unfinished_runs true | head -n 1)"
-            done
-            if [ -z "$run" ]; then
-              echo "::error::Couldn't find the Publish run for $tag."
-              exit 1
-            fi
-
-            url="$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run"
-            echo "Publishing $package $version: $url"
-            if ! gh run watch "$run" --exit-status --interval 30 > /dev/null; then
-              echo "::error::Publishing $package $version failed: $url"
-              exit 1
-            fi
-
-            # pub.dev caches its package listings for a couple of minutes, and the next package
-            # resolves against this one.
-            tries=0
-            until curl -sf "https://pub.dev/api/packages/$package" | grep -F "\"version\":\"$version\"" > /dev/null; do
-              tries=$((tries + 1))
-              if [ "$tries" -ge 40 ]; then
-                echo "::error::$package $version was published but isn't listed on pub.dev yet."
-                exit 1
-              fi
-              sleep 15
-            done
-            echo "Published $package $version."
           done
+          if [ -z "$run" ]; then
+            echo "::error::Couldn't find the Publish run for $tag."
+            exit 1
+          fi
+
+          url="$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run"
+          echo "Publishing $version: $url"
+          if ! gh run watch "$run" --exit-status --interval 30 > /dev/null; then
+            echo "::error::Publishing $version failed: $url"
+            exit 1
+          fi
+          echo "Published $version."

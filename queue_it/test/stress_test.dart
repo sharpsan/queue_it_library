@@ -19,7 +19,13 @@ const _transitions = {
     QueueItemStatus.canceled,
     QueueItemStatus.removed,
   },
-  QueueItemStatus.failed: {QueueItemStatus.pending, QueueItemStatus.removed},
+  // A listener can cancel an item in the failed event of an attempt that
+  // would be retried.
+  QueueItemStatus.failed: {
+    QueueItemStatus.pending,
+    QueueItemStatus.canceled,
+    QueueItemStatus.removed,
+  },
   QueueItemStatus.completed: {QueueItemStatus.removed},
   QueueItemStatus.canceled: {QueueItemStatus.removed},
   QueueItemStatus.removed: <QueueItemStatus>{},
@@ -57,6 +63,10 @@ Future<void> _run(int seed) async {
   /// add returns, and then there's nothing to wait for.
   final waiters = <String, Future<QueueItem<int>>>{};
   var added = 0;
+
+  /// The items whose last event was the failure of an attempt that will be
+  /// retried.
+  final retrying = <String>{};
 
   /// Lets other code run: usually only what's ready now, sometimes timers.
   Future<void> pause() => wait(random.nextInt(5) == 0 ? 1 : 0);
@@ -129,17 +139,32 @@ Future<void> _run(int seed) async {
         addOrder.add(item.id);
       case QueueEvent.itemStatusUpdated || QueueEvent.itemRemoved:
         final from = statuses[item!.id]!;
+        retrying.remove(item.id);
+        if (item.status == QueueItemStatus.failed &&
+            item.retryCount < retries &&
+            !(useRetryIf && item.error is _Fatal)) {
+          retrying.add(item.id);
+        }
         if (!_transitions[from]!.contains(item.status)) {
           problems.add('${item.id} went from $from to ${item.status}');
+        }
+        if (from == QueueItemStatus.failed &&
+            item.status == QueueItemStatus.canceled &&
+            (item.retryCount >= retries ||
+                (useRetryIf && item.error is _Fatal))) {
+          problems.add('${item.id} was canceled after its last attempt');
         }
         statuses[item.id] = item.status;
       case QueueEvent.cancelledAll:
         statuses.updateAll((id, status) => status == QueueItemStatus.pending ||
-                status == QueueItemStatus.processing
+                status == QueueItemStatus.processing ||
+                retrying.contains(id)
             ? QueueItemStatus.canceled
             : status);
+        retrying.clear();
       case QueueEvent.removedAll:
         statuses.updateAll((id, status) => QueueItemStatus.removed);
+        retrying.clear();
     }
     if (snapshot.isStarted != isStarted) {
       problems
@@ -159,19 +184,34 @@ Future<void> _run(int seed) async {
 
   String randomId() => addOrder[random.nextInt(addOrder.length)];
 
-  // A second listener that calls the queue now and then.
+  // A second listener that calls the queue now and then, with every method
+  // but dispose.
   queue.onUpdate.listen((snapshot) {
     if (!listenersMayCall) return;
-    final roll = random.nextInt(100);
-    if (roll < 2 && added < 150) {
+    final item = snapshot.eventItem;
+    final roll = random.nextInt(200);
+    if (roll < 4 && added < 150) {
       add();
-    } else if (roll < 4) {
+    } else if (roll < 8) {
       queue.cancelById(randomId());
-    } else if (roll < 5) {
+    } else if (roll < 10) {
       queue.removeById(randomId());
-    } else if (roll < 6 &&
-        snapshot.eventItem?.status == QueueItemStatus.failed) {
-      queue.removeById(snapshot.eventItem!.id);
+    } else if (roll < 12 && item?.status == QueueItemStatus.failed) {
+      queue.removeById(item!.id);
+    } else if (roll < 14 && item?.status == QueueItemStatus.failed) {
+      queue.cancelById(item!.id);
+    } else if (roll < 16) {
+      queue.stop();
+    } else if (roll < 19) {
+      queue.start(stopAutomatically: random.nextBool());
+    } else if (roll < 20) {
+      queue
+        ..stop()
+        ..start(stopAutomatically: random.nextBool());
+    } else if (roll < 21) {
+      queue.cancelAll();
+    } else if (roll < 22 && random.nextInt(4) == 0) {
+      queue.removeAll();
     }
   });
 
