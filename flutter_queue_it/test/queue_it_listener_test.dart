@@ -273,6 +273,32 @@ void main() {
     expect(events, ['other:new']);
   });
 
+  testWidgets(
+      'gives the events sent as moved widgets come back to its new '
+      'listener', (tester) async {
+    final key = GlobalKey();
+    Widget build({required bool moved}) {
+      final child = QueueItListener<String>(
+        key: key,
+        queue: queue,
+        listener: (context, snapshot) =>
+            events.add('${moved ? 'new' : 'old'}:${snapshot.eventItem?.data}'),
+        // Changes the queue when it's back in the tree after the move.
+        child: _Lifecycle(onActivate: () => queue.add('activate')),
+      );
+      return Column(children: [
+        moved
+            ? Center(child: child)
+            : Padding(padding: EdgeInsets.zero, child: child),
+      ]);
+    }
+
+    await tester.pumpWidget(build(moved: false));
+    await tester.pumpWidget(build(moved: true));
+
+    expect(events, ['new:activate']);
+  });
+
   testWidgets('keeps listening when moved with a GlobalKey', (tester) async {
     final key = GlobalKey();
     Widget build({required bool wrapped}) {
@@ -297,9 +323,10 @@ void main() {
 /// Calls [onInit] from initState and [onDispose] from dispose, like a widget
 /// that adds its work to a queue when it appears, or cancels it when it goes.
 class _Lifecycle extends StatefulWidget {
-  const _Lifecycle({this.onInit, this.onDispose});
+  const _Lifecycle({this.onInit, this.onActivate, this.onDispose});
 
   final VoidCallback? onInit;
+  final VoidCallback? onActivate;
   final VoidCallback? onDispose;
 
   @override
@@ -311,6 +338,12 @@ class _LifecycleState extends State<_Lifecycle> {
   void initState() {
     super.initState();
     widget.onInit?.call();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    widget.onActivate?.call();
   }
 
   @override

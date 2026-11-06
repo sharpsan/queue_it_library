@@ -99,16 +99,13 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   }
 
   // Back in the tree after a move with a GlobalKey. Flutter is building, and
-  // the widget may still get its new configuration, so the kept events wait
-  // for the end of the frame.
+  // the widget may still get its new configuration, so the kept events, and
+  // any sent while the moved widgets come back, wait for the end of the
+  // frame.
   @override
   void activate() {
     super.activate();
     if (_isDeliveryScheduled) return;
-    if (_deferred!.isEmpty) {
-      _deferred = null;
-      return;
-    }
     _isDeliveryScheduled = true;
     SchedulerBinding.instance
       ..addPostFrameCallback((_) => _deliverDeferred())
