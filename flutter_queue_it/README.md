@@ -143,9 +143,10 @@ QueueItListener(
 );
 ```
 
-The listener can call the queue too. It's called right away, inside the queue call that caused the
-update, so if you change the queue while Flutter is building or disposing widgets, for example
-from a widget's `initState` or `dispose`, the listener runs then and can't show a SnackBar yet.
+The listener can call the queue too. It's called as soon as the queue sends an update. Updates sent
+while Flutter is building or disposing widgets, for example from a widget's `initState` or
+`dispose`, reach the listener right after that frame, so it can still show a SnackBar. Once the
+widget is being removed, the listener isn't called any more.
 
 ### Good to know
 
@@ -163,7 +164,8 @@ from a widget's `initState` or `dispose`, the listener runs then and can't show 
   rebuilds, like a `State`, and call `dispose()` on it when you're done.
 - Any number of widgets can listen to the same queue, such as a list and a counter in the app bar.
 - If a rebuild passes a different queue, the widgets switch to it. Until the new queue changes,
-  `builder` still gets the old queue's last snapshot.
+  `builder` still gets the old queue's last snapshot. Updates from the old queue that were still
+  waiting for the end of the frame don't reach `listener`.
 
 ### Migrating from 0.9
 

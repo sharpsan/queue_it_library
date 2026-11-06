@@ -1,4 +1,6 @@
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -145,6 +147,143 @@ void main() {
     expect(errors, isEmpty);
   });
 
+  testWidgets(
+      'stops calling the listener when widgets removed before it change the '
+      'queue', (tester) async {
+    final above = queue.add('above');
+    final before = queue.add('before');
+    final errors = <Object>[];
+    // Flutter deactivates the widgets above the listener, and the ones before
+    // it, before the listener itself.
+    Widget build({required bool shown}) => Directionality(
+          textDirection: TextDirection.ltr,
+          child: Column(children: [
+            if (shown) _Lifecycle(onDeactivate: () => queue.cancelById(before)),
+            if (shown)
+              _Lifecycle(
+                onDeactivate: () => queue.cancelById(above),
+                child: QueueItListener<String>(
+                  queue: queue,
+                  listener: (context, snapshot) {
+                    try {
+                      Directionality.of(context);
+                      events.add(snapshot.event.name);
+                    } catch (error) {
+                      errors.add(error);
+                    }
+                  },
+                  child: const SizedBox(),
+                ),
+              ),
+          ]),
+        );
+    await tester.pumpWidget(build(shown: true));
+
+    await tester.pumpWidget(build(shown: false));
+
+    expect(queue.items().map((item) => '${item.data}:${item.status.name}'),
+        ['above:canceled', 'before:canceled']);
+    expect(events, isEmpty);
+    expect(errors, isEmpty);
+  });
+
+  testWidgets(
+      'lets the listener show a SnackBar for updates sent while widgets are '
+      'disposed', (tester) async {
+    final id = queue.add('a');
+    Widget build({required bool tile}) => MaterialApp(
+          home: Scaffold(
+            body: QueueItListener<String>(
+              queue: queue,
+              listener: (context, snapshot) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('${snapshot.eventItem?.status.name}')));
+              },
+              // The tile cancels its download when it goes.
+              child: tile
+                  ? _Lifecycle(onDispose: () => queue.cancelById(id))
+                  : const SizedBox(),
+            ),
+          ),
+        );
+    await tester.pumpWidget(build(tile: true));
+
+    await tester.pumpWidget(build(tile: false));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('canceled'), findsOneWidget);
+  });
+
+  testWidgets('is not called on a page that cancels its work as it is popped',
+      (tester) async {
+    final id = queue.add('a');
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navigator,
+      home: const Scaffold(body: Text('home')),
+    ));
+    unawaited(navigator.currentState!.push(MaterialPageRoute<void>(
+      builder: (context) => _Lifecycle(
+        onDeactivate: () => queue.cancelById(id),
+        child: Scaffold(
+          body: QueueItListener<String>(
+            queue: queue,
+            listener: (context, snapshot) {
+              events.add(snapshot.event.name);
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('canceled')));
+            },
+            child: const SizedBox(),
+          ),
+        ),
+      ),
+    )));
+    await tester.pumpAndSettle();
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(queue.items().single.status, QueueItemStatus.canceled);
+    expect(events, isEmpty);
+  });
+
+  testWidgets(
+      'hears the updates sent as widgets moving with it are deactivated, '
+      'after the frame', (tester) async {
+    final id = queue.add('a');
+    final key = GlobalKey();
+    Widget build({required bool moved}) {
+      final panel = _Lifecycle(
+        key: key,
+        onDeactivate: () => queue.cancelById(id),
+        child: QueueItListener<String>(
+          queue: queue,
+          listener: (context, snapshot) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('${snapshot.eventItem?.status.name}')));
+          },
+          child: const SizedBox(),
+        ),
+      );
+      return MaterialApp(
+        home: Scaffold(
+          body: moved
+              ? Center(child: panel)
+              : Padding(padding: EdgeInsets.zero, child: panel),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build(moved: false));
+    await tester.pumpWidget(build(moved: true));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('canceled'), findsOneWidget);
+  });
+
   testWidgets('hears the events sent while it is moved', (tester) async {
     final key = GlobalKey();
     Widget build({required bool moved}) {
@@ -274,6 +413,41 @@ void main() {
   });
 
   testWidgets(
+      "drops the old queue's updates sent while building the frame it's "
+      'given a new queue in', (tester) async {
+    final other = QueueIt<String>(itemHandler: (item) {});
+    addTearDown(other.dispose);
+    // The key keeps the same listener when it's built after another widget.
+    Widget child(QueueIt<String> listened) => QueueItListener<String>(
+          key: const ValueKey('listener'),
+          queue: listened,
+          listener: (context, snapshot) =>
+              events.add('${identical(listened, queue) ? 'queue' : 'other'}:'
+                  '${snapshot.eventItem?.data}'),
+          child: const SizedBox(),
+        );
+    await tester.pumpWidget(Column(children: [child(queue)]));
+    queue.add('before');
+
+    await tester.pumpWidget(Column(children: [
+      child(other),
+      _Lifecycle(onInit: () => other.add('during')),
+    ]));
+    other.add('after');
+
+    expect(events, ['queue:before', 'other:during', 'other:after']);
+
+    await tester.pumpWidget(Column(children: [
+      _Lifecycle(key: const ValueKey('first'), onInit: () => other.add('old')),
+      child(queue),
+    ]));
+    queue.add('new');
+
+    expect(
+        events, ['queue:before', 'other:during', 'other:after', 'queue:new']);
+  });
+
+  testWidgets(
       'gives the events sent as moved widgets come back to its new '
       'listener', (tester) async {
     final key = GlobalKey();
@@ -323,11 +497,20 @@ void main() {
 /// Calls [onInit] from initState and [onDispose] from dispose, like a widget
 /// that adds its work to a queue when it appears, or cancels it when it goes.
 class _Lifecycle extends StatefulWidget {
-  const _Lifecycle({this.onInit, this.onActivate, this.onDispose});
+  const _Lifecycle({
+    super.key,
+    this.onInit,
+    this.onActivate,
+    this.onDeactivate,
+    this.onDispose,
+    this.child = const SizedBox(),
+  });
 
   final VoidCallback? onInit;
   final VoidCallback? onActivate;
+  final VoidCallback? onDeactivate;
   final VoidCallback? onDispose;
+  final Widget child;
 
   @override
   State<_Lifecycle> createState() => _LifecycleState();
@@ -347,11 +530,17 @@ class _LifecycleState extends State<_Lifecycle> {
   }
 
   @override
+  void deactivate() {
+    widget.onDeactivate?.call();
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     widget.onDispose?.call();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => const SizedBox();
+  Widget build(BuildContext context) => widget.child;
 }

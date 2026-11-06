@@ -5,10 +5,11 @@
 * Fix: `QueueItWidget` no longer throws when the queue changes while Flutter is building, laying
   out or disposing widgets, for example from a widget's `initState` or `dispose`. It rebuilds
   right after that frame.
-* Fix: `QueueItListener` stops calling the listener as soon as it's being removed, so the listener
-  never gets a context it can't use. When it's moved with a `GlobalKey`, the events sent during the
-  move reach its listener in order, right after that frame, unless it's given another queue at the
-  same time.
+* Fix: `QueueItListener` calls the listener right after the frame for updates sent while Flutter is
+  building or disposing widgets, so the listener can use its context to show a SnackBar, and it
+  isn't called once the widget is being removed. When it's moved with a `GlobalKey`, the updates
+  sent during the move reach its listener in order, right after that frame, unless it's given
+  another queue at the same time.
 * Docs: the README's progress bar shows the current batch, and its "All uploads processed"
   message no longer shows when the queue is stopped early.
 * Example: a canceled or removed image is no longer downloaded and shown anyway, two images swiped

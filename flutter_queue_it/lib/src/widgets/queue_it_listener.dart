@@ -26,17 +26,18 @@ import 'package:flutter/widgets.dart';
 /// )
 /// ```
 ///
-/// The listener runs synchronously, inside the queue call that caused the
-/// event. It can call the queue. If that call was made while Flutter builds
-/// or disposes widgets, from a widget's `initState` or `dispose` for example,
-/// the listener runs then too, so it can't show a SnackBar or change other
-/// widgets' state at that moment.
+/// The listener is called as the queue sends each event, and it can call the
+/// queue. Events sent while Flutter builds, lays out or disposes widgets, from
+/// a widget's `initState`, `deactivate` or `dispose` for example, reach it in
+/// order right after that frame instead, when it can use its context to show
+/// a SnackBar or change other widgets' state.
 ///
-/// The listener isn't called once the widget is being removed. When the
-/// widget moves to a new place in the tree (with a [GlobalKey]), the events
-/// sent during the move reach its listener in order, right after that frame,
-/// unless it's given another queue at the same time. The widget never starts,
-/// stops or disposes the queue.
+/// The listener isn't called once the widget is being removed: the events
+/// still waiting for the end of the frame are dropped with it. When the widget
+/// moves to a new place in the tree (with a [GlobalKey]), the events sent
+/// during the move reach its listener after the frame too. When it's given
+/// another queue, the old queue's events that are still waiting are dropped.
+/// The widget never starts, stops or disposes the queue.
 class QueueItListener<T> extends StatefulWidget {
   /// Creates a widget that calls [listener] for every event of [queue].
   const QueueItListener({
@@ -65,9 +66,9 @@ class QueueItListener<T> extends StatefulWidget {
 class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   StreamSubscription<QueueSnapshot<T>>? _subscription;
 
-  /// The events kept since the widget was deactivated, until they're
-  /// delivered after the frame it came back in. Null while events go straight
-  /// to the listener.
+  /// The events kept while Flutter builds, or since the widget was
+  /// deactivated, until they're delivered after the frame. Null while events
+  /// go straight to the listener.
   List<QueueSnapshot<T>>? _deferred;
   var _isDeliveryScheduled = false;
 
@@ -88,9 +89,9 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     }
   }
 
-  // A widget being removed or moved is deactivated first, and its context
-  // can't be used until it's back in the tree. Events can arrive in between,
-  // for example when another widget changes the queue from its initState or
+  // A widget being removed or moved is deactivated, and its context can't be
+  // used until it's back in the tree. Events can arrive in between, for
+  // example when another widget changes the queue from its initState or
   // dispose. They're kept for a move, and dropped with the widget otherwise.
   @override
   void deactivate() {
@@ -105,6 +106,10 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   @override
   void activate() {
     super.activate();
+    _scheduleDelivery();
+  }
+
+  void _scheduleDelivery() {
     if (_isDeliveryScheduled) return;
     _isDeliveryScheduled = true;
     SchedulerBinding.instance
@@ -143,11 +148,24 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
       final deferred = _deferred;
       if (deferred != null) {
         deferred.add(snapshot);
-      } else if (mounted) {
+      } else if (!mounted) {
+        return;
+      } else if (_isBuilding) {
+        // The widget may be on its way out of the tree, or moving: widgets
+        // above it are deactivated before it is. Wait for the end of the
+        // frame to find out.
+        _deferred = [snapshot];
+        _scheduleDelivery();
+      } else {
         widget.listener(context, snapshot);
       }
     });
   }
+
+  bool get _isBuilding =>
+      SchedulerBinding.instance.schedulerPhase ==
+          SchedulerPhase.persistentCallbacks ||
+      (WidgetsBinding.instance.buildOwner?.debugBuilding ?? false);
 
   @override
   Widget build(BuildContext context) => widget.child;
