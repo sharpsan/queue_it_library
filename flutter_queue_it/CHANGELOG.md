@@ -7,7 +7,7 @@
   right after that frame.
 * Fix: `QueueItListener` stops calling the listener as soon as it's being removed, so the listener
   never gets a context it can't use. When it's moved with a `GlobalKey`, the events sent during the
-  move reach the listener once it's in its new place.
+  move reach its listener in order, right after that frame.
 * Docs: the README's progress bar shows the current batch, and its "All uploads processed"
   message no longer shows when the queue is stopped early.
 * Example: a canceled or removed image is no longer downloaded and shown anyway, two images swiped

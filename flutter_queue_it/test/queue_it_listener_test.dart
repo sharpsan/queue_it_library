@@ -181,6 +181,71 @@ void main() {
     expect(events, ['itemAdded:during', 'itemAdded:after']);
   });
 
+  testWidgets('gives the events sent during a move to its new listener',
+      (tester) async {
+    final key = GlobalKey();
+    Widget build({required bool moved}) {
+      final child = QueueItListener<String>(
+        key: key,
+        queue: queue,
+        listener: (context, snapshot) =>
+            events.add('${moved ? 'new' : 'old'}:${snapshot.eventItem?.data}'),
+        child: const SizedBox(),
+      );
+      return Column(children: [
+        if (moved) _Lifecycle(onInit: () => queue.add('during')),
+        moved
+            ? Center(child: child)
+            : Padding(padding: EdgeInsets.zero, child: child),
+      ]);
+    }
+
+    await tester.pumpWidget(build(moved: false));
+    await tester.pumpWidget(build(moved: true));
+    queue.add('after');
+
+    expect(events, ['new:during', 'new:after']);
+  });
+
+  testWidgets(
+      'reports a listener that throws for an event sent during a '
+      'move, and carries on', (tester) async {
+    final key = GlobalKey();
+    var disposes = 0;
+    Widget child() => QueueItListener<String>(
+          key: key,
+          queue: queue,
+          listener: (context, snapshot) {
+            events.add('${snapshot.eventItem?.data}');
+            if (snapshot.eventItem?.data == 'throws') {
+              throw StateError('listener failed');
+            }
+          },
+          child: _Lifecycle(onDispose: () => disposes++),
+        );
+    await tester.pumpWidget(Column(children: [
+      Padding(padding: EdgeInsets.zero, child: child()),
+    ]));
+
+    await tester.pumpWidget(Column(children: [
+      _Lifecycle(
+          onInit: () => queue
+            ..add('throws')
+            ..add('next')),
+      Center(child: child()),
+    ]));
+
+    expect(tester.takeException(), isStateError);
+    queue.add('after');
+    expect(events, ['throws', 'next', 'after']);
+    expect(disposes, 0);
+
+    await tester.pumpWidget(const SizedBox());
+    expect(disposes, 1);
+    queue.add('gone');
+    expect(events, ['throws', 'next', 'after']);
+  });
+
   testWidgets('keeps listening when moved with a GlobalKey', (tester) async {
     final key = GlobalKey();
     Widget build({required bool wrapped}) {

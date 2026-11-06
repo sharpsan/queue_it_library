@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:queue_it/queue_it.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// A widget that calls [listener] for every event of a [QueueIt], without
@@ -32,9 +33,9 @@ import 'package:flutter/widgets.dart';
 /// widgets' state at that moment.
 ///
 /// The listener isn't called once the widget is being removed. When the
-/// widget moves to a new place in the tree (with a [GlobalKey]), events sent
-/// during the move reach the listener once it's in its new place. The widget
-/// never starts, stops or disposes the queue.
+/// widget moves to a new place in the tree (with a [GlobalKey]), the events
+/// sent during the move reach its listener in order, right after that frame.
+/// The widget never starts, stops or disposes the queue.
 class QueueItListener<T> extends StatefulWidget {
   /// Creates a widget that calls [listener] for every event of [queue].
   const QueueItListener({
@@ -63,9 +64,11 @@ class QueueItListener<T> extends StatefulWidget {
 class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   StreamSubscription<QueueSnapshot<T>>? _subscription;
 
-  /// The events sent while the widget is deactivated, or null while it's
-  /// active.
+  /// The events kept since the widget was deactivated, until they're
+  /// delivered after the frame it came back in. Null while events go straight
+  /// to the listener.
   List<QueueSnapshot<T>>? _deferred;
+  var _isDeliveryScheduled = false;
 
   @override
   void initState() {
@@ -88,18 +91,43 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
   // dispose. They're kept for a move, and dropped with the widget otherwise.
   @override
   void deactivate() {
-    _deferred = [];
+    _deferred ??= [];
     super.deactivate();
   }
 
-  // Back in the tree after a move with a GlobalKey.
+  // Back in the tree after a move with a GlobalKey. Flutter is building, and
+  // the widget may still get its new configuration, so the kept events wait
+  // for the end of the frame.
   @override
   void activate() {
     super.activate();
-    final deferred = _deferred!;
+    if (_isDeliveryScheduled) return;
+    if (_deferred!.isEmpty) {
+      _deferred = null;
+      return;
+    }
+    _isDeliveryScheduled = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) => _deliverDeferred())
+      ..ensureVisualUpdate();
+  }
+
+  void _deliverDeferred() {
+    _isDeliveryScheduled = false;
+    final deferred = _deferred;
+    if (!mounted || deferred == null) return;
     // Events the listener causes join the list, so they stay in order.
     for (var i = 0; i < deferred.length; i++) {
-      widget.listener(context, deferred[i]);
+      try {
+        widget.listener(context, deferred[i]);
+      } catch (error, stack) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'flutter_queue_it',
+          context: ErrorDescription('while calling a QueueItListener'),
+        ));
+      }
     }
     _deferred = null;
   }
