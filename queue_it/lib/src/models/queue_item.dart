@@ -61,7 +61,7 @@ class QueueItem<T> {
   /// [StateError].
   ///
   /// If the handler throws, the attempt fails, whatever it set. The queue
-  /// clears it after each attempt.
+  /// clears it once it has applied the attempt's outcome.
   QueueItemStatus? nextStatus;
 
   /// The error that made the item's last failed attempt fail, or null if no

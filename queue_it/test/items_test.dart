@@ -109,6 +109,36 @@ void main() {
       expect(queue.currentBatchItems.map((item) => item.data), [6]);
     });
 
+    test('throw when the queue changes while the current batch is iterated',
+        () {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      for (var i = 0; i < 3; i++) {
+        queue.add(i);
+      }
+
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          queue.remove(item);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+      var visited = 0;
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          if (++visited > 100) break;
+          queue.add(item.data + 10);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+      // Removing an item and adding one with its id is a change too.
+      expect(() {
+        for (final item in queue.currentBatchItems) {
+          queue
+            ..remove(item)
+            ..add(item.data, id: item.id);
+        }
+      }, throwsA(isA<ConcurrentModificationError>()));
+    });
+
     test('keep an item that is about to be retried', () async {
       final queue = QueueIt<int>(
         retries: 1,

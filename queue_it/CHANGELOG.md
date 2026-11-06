@@ -36,7 +36,8 @@
 * Fix: `summary` rounds the progress, and `progress` is only 1 once every item has finished,
   instead of rounding up to 1 with items left.
 * Fix: with `deepCopyItemsInSnapshot`, each update costs time in proportion to the current batch,
-  as documented, instead of to every item the queue holds. `currentBatchItems` is faster too.
+  as documented, instead of to every item the queue holds. `currentBatchItems` is faster too when
+  the queue keeps the items of earlier batches.
 * Docs: an error thrown by `retryIf` or `retryDelay` is reported as an uncaught error, and the item
   isn't retried.
 * Docs: corrections about which statuses are final, what snapshots copy, what `retryDelay` is

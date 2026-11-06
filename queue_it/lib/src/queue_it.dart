@@ -100,6 +100,10 @@ class QueueIt<T> {
   /// none left. Items are only added at the end, and a batch only starts once
   /// every item has finished, so the current batch is the end of the list.
   _ItemEntry<T>? _batchStart;
+
+  /// Counts the changes to [_items], so that iterating the current batch
+  /// notices the queue changing, as iterating a list does.
+  var _itemChanges = 0;
   var _isStarted = false;
   var _isProcessing = false;
   var _stopAutomatically = true;
@@ -294,6 +298,7 @@ class QueueIt<T> {
     );
     final entry = _ItemEntry(item);
     _items.add(entry);
+    _itemChanges++;
     _itemsById[item.id] = entry;
     _batchStart ??= entry;
     _enqueue(item);
@@ -324,6 +329,7 @@ class QueueIt<T> {
   void removeAll() {
     final removed = items().toList();
     _items.clear();
+    _itemChanges++;
     _batchStart = null;
     _itemsById.clear();
     _waiting.clear();
@@ -520,6 +526,7 @@ class QueueIt<T> {
     final entry = _itemsById.remove(item.id)!;
     if (identical(entry, _batchStart)) _batchStart = entry.next;
     entry.unlink();
+    _itemChanges++;
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
@@ -800,16 +807,39 @@ class _BatchItems<T> extends Iterable<QueueItem<T>> {
   final String _batchId;
 
   @override
-  Iterator<QueueItem<T>> get iterator {
-    final items = _batchId == _queue._currentBatchId
-        ? _from(_queue._batchStart)
-        : _queue.items();
-    return items.where((item) => item.batchId == _batchId).iterator;
-  }
+  Iterator<QueueItem<T>> get iterator => _batchId == _queue._currentBatchId
+      ? _CurrentBatchIterator(_queue)
+      : _queue.items().where((item) => item.batchId == _batchId).iterator;
+}
 
-  Iterable<QueueItem<T>> _from(_ItemEntry<T>? entry) sync* {
-    for (; entry != null; entry = entry.next) {
-      yield entry.item;
+/// Goes through the current batch from its first item. Like a list's
+/// iterator, it throws a [ConcurrentModificationError] if items are added or
+/// removed meanwhile.
+class _CurrentBatchIterator<T> implements Iterator<QueueItem<T>> {
+  _CurrentBatchIterator(this._queue)
+      : _changes = _queue._itemChanges,
+        _next = _queue._batchStart;
+
+  final QueueIt<T> _queue;
+  final int _changes;
+  _ItemEntry<T>? _next;
+  QueueItem<T>? _current;
+
+  @override
+  QueueItem<T> get current => _current as QueueItem<T>;
+
+  @override
+  bool moveNext() {
+    if (_queue._itemChanges != _changes) {
+      throw ConcurrentModificationError(_queue);
     }
+    final entry = _next;
+    if (entry == null) {
+      _current = null;
+      return false;
+    }
+    _current = entry.item;
+    _next = entry.next;
+    return true;
   }
 }
