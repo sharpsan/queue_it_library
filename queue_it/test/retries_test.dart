@@ -79,6 +79,68 @@ void main() {
     expect(processed, ['1.0', '1.1', '2.0']);
   });
 
+  test('retries items in the order their retries are due', () async {
+    final processed = <String>[];
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (retry) => const Duration(milliseconds: 20),
+      itemHandler: (item) {
+        processed.add('${item.data}.${item.retryCount}');
+        if (item.data == 3) return gate(item);
+        if (item.data < 3 && item.retryCount == 0) throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..add(3)
+      ..add(4)
+      ..start();
+    // Both retries are due while 3 holds the only slot.
+    await wait(80);
+    expect(processed, ['1.0', '2.0', '3.0']);
+
+    gate.release(3);
+    await queue.running;
+
+    expect(processed, ['1.0', '2.0', '3.0', '1.1', '2.1', '4.0']);
+  });
+
+  test('retries items that failed while stopped in the order they failed',
+      () async {
+    final processed = <String>[];
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(
+      parallel: 2,
+      retries: 1,
+      itemHandler: (item) {
+        processed.add('${item.data}.${item.retryCount}');
+        if (item.retryCount == 0) return gate(item);
+      },
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..add(3)
+      ..start();
+    await wait();
+    queue.stop();
+    gate
+      ..release(1, Exception('failed'))
+      ..release(2, Exception('failed'));
+    await queue.running;
+
+    queue.start();
+    await wait();
+    gate.release(3);
+    await queue.running;
+
+    expect(processed, ['1.0', '2.0', '1.1', '2.1', '3.0']);
+  });
+
   test('fails an item without retrying when retryIf says no', () async {
     final errors = <Object>[];
     final queue = QueueIt<int>(

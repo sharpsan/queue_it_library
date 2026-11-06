@@ -272,6 +272,26 @@ void main() {
     expect(queue.isStarted, isFalse);
   });
 
+  test('completes running when a listener starts it again as it stops',
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    var restarted = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.stoppedQueue && !restarted) {
+        restarted = true;
+        queue.start();
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+
+    await queue.running.timeout(const Duration(seconds: 1));
+    expect(restarted, isTrue);
+    expect(queue.isStarted, isTrue);
+  });
+
   test(
       'stops by itself when its items are canceled or removed before it '
       'gets to them', () async {

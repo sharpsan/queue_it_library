@@ -32,7 +32,8 @@ import 'package:uuid/uuid.dart';
 /// An item is [QueueItemStatus.completed] when its handler returns. When the
 /// handler throws, the item is retried up to [retries] times, after
 /// [retryDelay] and if [retryIf] allows it, and then it has
-/// [QueueItemStatus.failed], with the error in [QueueItem.error].
+/// [QueueItemStatus.failed], with the error in [QueueItem.error]. Retries go
+/// ahead of the other pending items, in the order they're due.
 ///
 /// ## Listening
 ///
@@ -69,8 +70,10 @@ class QueueIt<T> {
   final _items = LinkedList<_ItemEntry<T>>();
   final _itemsById = <String, _ItemEntry<T>>{};
 
-  /// The items waiting to be processed, in order, and each one's place in it.
-  /// Items leave it as soon as they're canceled or removed.
+  /// The items waiting to be processed, and each one's place among them.
+  /// Retries go first, in the order they're due, then the other items in
+  /// order. Items leave as soon as they're canceled or removed.
+  final _waitingRetries = LinkedList<_WaitingItem<T>>();
   final _waiting = LinkedList<_WaitingItem<T>>();
   final _waitingEntries = <QueueItem<T>, _WaitingItem<T>>{};
 
@@ -244,8 +247,14 @@ class QueueIt<T> {
     _starts++;
     _stopAutomatically = stopAutomatically;
     _hasHadItems = _hasUnfinishedItems();
+    // Started again before the handlers of a stop returned, the queue carries
+    // on with the same run. Once they've returned, that run is over, even if
+    // a listener of the stop starts the queue before running completes.
     final running = _running;
-    if (running == null || running.isCompleted) _running = Completer<void>();
+    if (running != null && !running.isCompleted && _runningItems.isEmpty) {
+      running.complete();
+    }
+    if (_running?.isCompleted ?? true) _running = Completer<void>();
     _lastStartedAt = DateTime.now();
     _sendOnUpdateEvent(QueueEvent.startedQueue, null);
     _schedulePump();
@@ -332,6 +341,7 @@ class QueueIt<T> {
     _itemChanges++;
     _batchStart = null;
     _itemsById.clear();
+    _waitingRetries.clear();
     _waiting.clear();
     _waitingEntries.clear();
     _retrying.clear();
@@ -480,7 +490,7 @@ class QueueIt<T> {
   /// about to be) or about to be retried. A handler that's still running for
   /// an item that was canceled or removed doesn't count.
   bool _hasUnfinishedItems() =>
-      _waiting.isNotEmpty ||
+      _waitingEntries.isNotEmpty ||
       _retryTimers.isNotEmpty ||
       _retrying.isNotEmpty ||
       _runningItems.any((item) =>
@@ -490,20 +500,24 @@ class QueueIt<T> {
   /// Whether the queue has anything left to do: items waiting or waiting to
   /// be retried, or handlers running.
   bool _hasWork() =>
-      _waiting.isNotEmpty ||
+      _waitingEntries.isNotEmpty ||
       _retryTimers.isNotEmpty ||
       _runningItems.isNotEmpty;
 
-  void _enqueue(QueueItem<T> item, {bool first = false}) {
-    final entry = _WaitingItem(item);
+  /// Adds [item] to the end of the waiting items, or of the waiting retries,
+  /// or with [first], puts it back at the front of them.
+  void _enqueue(QueueItem<T> item, {bool retry = false, bool first = false}) {
+    final entry = _WaitingItem(item, isRetry: retry);
     _waitingEntries[item] = entry;
-    first ? _waiting.addFirst(entry) : _waiting.add(entry);
+    final waiting = retry ? _waitingRetries : _waiting;
+    first ? waiting.addFirst(entry) : waiting.add(entry);
   }
 
-  QueueItem<T> _dequeue() {
-    final entry = _waiting.first..unlink();
+  _WaitingItem<T> _dequeue() {
+    final waiting = _waitingRetries.isNotEmpty ? _waitingRetries : _waiting;
+    final entry = waiting.first..unlink();
     _waitingEntries.remove(entry.item);
-    return entry.item;
+    return entry;
   }
 
   /// Takes [item] out of the waiting items, if it's there.
@@ -561,8 +575,9 @@ class QueueIt<T> {
   /// Starts waiting items while there are free slots, then checks whether the
   /// queue ran out of work.
   void _pump() {
-    while (
-        _isStarted && _runningItems.length < parallel && _waiting.isNotEmpty) {
+    while (_isStarted &&
+        _runningItems.length < parallel &&
+        _waitingEntries.isNotEmpty) {
       unawaited(_process(_dequeue()));
     }
     _checkIdle();
@@ -603,8 +618,9 @@ class QueueIt<T> {
     }
   }
 
-  /// Runs the handler for [item] and applies the outcome.
-  Future<void> _process(QueueItem<T> item) async {
+  /// Runs the handler for the [waiting] item and applies the outcome.
+  Future<void> _process(_WaitingItem<T> waiting) async {
+    final item = waiting.item;
     _runningItems.add(item);
     if (!_isProcessing) {
       _isProcessing = true;
@@ -617,7 +633,7 @@ class QueueIt<T> {
       item.status = QueueItemStatus.processing;
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else if (item.status == QueueItemStatus.pending) {
-      _enqueue(item, first: true);
+      _enqueue(item, retry: waiting.isRetry, first: true);
     }
     if (_isDisposing || item.status != QueueItemStatus.processing) {
       _runningItems.remove(item);
@@ -712,11 +728,11 @@ class QueueIt<T> {
     // items that were waiting.
     if (_isDisposing) return;
     if (delay <= Duration.zero) {
-      _enqueue(item, first: true);
+      _enqueue(item, retry: true);
     } else {
       _retryTimers[item.id] = Timer(delay, () {
         _retryTimers.remove(item.id);
-        _enqueue(item, first: true);
+        _enqueue(item, retry: true);
         _pump();
       });
     }
@@ -745,8 +761,11 @@ class QueueIt<T> {
     QueueEvent event,
     QueueItem<T>? item,
   ) {
-    // A paused subscription keeps hasListener true after the stream closes.
-    if (_onUpdateStreamController.isClosed ||
+    // A disposed queue sends no more events, even while the ones queued
+    // before are still being delivered. A paused subscription keeps
+    // hasListener true after the stream closes.
+    if (_isDisposed ||
+        _onUpdateStreamController.isClosed ||
         !_onUpdateStreamController.hasListener) {
       return;
     }
@@ -790,11 +809,12 @@ final class _ItemEntry<T> extends LinkedListEntry<_ItemEntry<T>> {
   final QueueItem<T> item;
 }
 
-/// An item's place among the waiting items.
+/// An item's place among the waiting items or retries.
 final class _WaitingItem<T> extends LinkedListEntry<_WaitingItem<T>> {
-  _WaitingItem(this.item);
+  _WaitingItem(this.item, {required this.isRetry});
 
   final QueueItem<T> item;
+  final bool isRetry;
 }
 
 /// The items of a batch: a lazy view of the queue's items. The current batch

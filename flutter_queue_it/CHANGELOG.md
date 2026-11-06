@@ -1,7 +1,7 @@
 ## 0.10.1
 
-* Requires queue_it 0.10.1, which fixes `waitFor`, batches and `dispose` in a few cases where
-  listeners call the queue. See its changelog.
+* Requires queue_it 0.10.1, which retries items in order and fixes `waitFor`, batches and `dispose`
+  in a few cases where listeners call the queue. See its changelog.
 * Fix: `QueueItWidget` no longer throws when the queue changes while Flutter is building, laying
   out or disposing widgets, for example from a widget's `initState` or `dispose`. It rebuilds
   right after that frame.

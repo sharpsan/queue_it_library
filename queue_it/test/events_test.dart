@@ -235,6 +235,22 @@ void main() {
     expect(events, hasLength(count));
   });
 
+  test('sends no events once a listener disposes it', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    final events = recordEvents(queue);
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.itemAdded) queue.dispose();
+    });
+    queue.onUpdate.listen((snapshot) {
+      // Called after the queue was disposed.
+      if (snapshot.event == QueueEvent.itemAdded) queue.cancelAll();
+    });
+
+    queue.add(1);
+
+    expect(events, ['itemAdded:1:pending']);
+  });
+
   test('can be called once disposed while a listener is paused', () async {
     final queue = QueueIt<int>(itemHandler: (item) {});
     final subscription = queue.onUpdate.listen((snapshot) {});

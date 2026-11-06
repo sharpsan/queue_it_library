@@ -136,8 +136,8 @@ print(items.summary);
 
 ### Retries
 
-When the item handler throws, the item is retried up to `retries` times, ahead of the other pending
-items. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
+When the item handler throws, the item is retried up to `retries` times. Retries go ahead of the
+other pending items, in the order they're due. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
 tell you why.
 
 ```dart

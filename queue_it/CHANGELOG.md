@@ -8,6 +8,12 @@
   and `cancel` cancels the item instead of returning false.
 * Fix: disposing the queue from a listener as an item fails no longer leaves its retry timer
   running.
+* Fix: items waiting to be retried are retried in the order they're due, instead of the newest
+  first.
+* Fix: once a listener disposes the queue, other listeners' calls to it send no more updates, as
+  after any other `dispose`.
+* Fix: `running` completes when the queue stops with no handlers running, even if a listener
+  starts it again right away.
 * Fix: an item being retried stays in its batch when a listener adds an item during its `failed`
   or `pending` update, and a canceled item whose handler is still running no longer keeps its
   batch open.
