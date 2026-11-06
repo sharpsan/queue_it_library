@@ -37,8 +37,8 @@ queue_it and flutter_queue_it always have the same version and are released toge
 only one of them changed. To release, bump the version in both `pubspec.yaml` files, add a section
 for it to both `CHANGELOG.md` files and push to `main`.
 
-Once CI passes, the Release workflow tags the commit (`v0.11.0`) and runs the Publish workflow on
-the tag. Publish checks and tests both packages before it uploads either, then publishes queue_it
+Once CI passes, the Release workflow tags the commit with the version, such as `v0.10.1`, and runs
+the Publish workflow on the tag. Publish checks and tests both packages before it uploads either, then publishes queue_it
 and flutter_queue_it to pub.dev and creates a GitHub release with both changelogs.
 
 If something fails, fix it and push to `main` again: the tag of a version that isn't fully

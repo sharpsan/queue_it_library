@@ -171,7 +171,7 @@ widget is being removed, the listener isn't called any more.
 
 - flutter_queue_it now exports queue_it, so you can remove the `package:queue_it/queue_it.dart`
   import (the analyzer reports it as unnecessary) and the `queue_it` dependency. If you keep the
-  dependency, update it to 0.10.0.
+  dependency, give it the same version as flutter_queue_it.
 - queue_it 0.10.0 has a few breaking changes of its own. Check out the migration notes in its
   [README](https://pub.dev/packages/queue_it).
 - flutter_queue_it now requires Dart 3.5 and Flutter 3.24 or later.
