@@ -34,8 +34,9 @@ import 'package:flutter/widgets.dart';
 ///
 /// The listener isn't called once the widget is being removed. When the
 /// widget moves to a new place in the tree (with a [GlobalKey]), the events
-/// sent during the move reach its listener in order, right after that frame.
-/// The widget never starts, stops or disposes the queue.
+/// sent during the move reach its listener in order, right after that frame,
+/// unless it's given another queue at the same time. The widget never starts,
+/// stops or disposes the queue.
 class QueueItListener<T> extends StatefulWidget {
   /// Creates a widget that calls [listener] for every event of [queue].
   const QueueItListener({
@@ -81,6 +82,8 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.queue != widget.queue) {
       _subscription?.cancel();
+      // The events kept during a move came from the old queue.
+      _deferred?.clear();
       _listen();
     }
   }

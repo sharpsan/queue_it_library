@@ -246,6 +246,33 @@ void main() {
     expect(events, ['throws', 'next', 'after']);
   });
 
+  testWidgets("drops the old queue's events when moved and given a new queue",
+      (tester) async {
+    final other = QueueIt<String>(itemHandler: (item) {});
+    addTearDown(other.dispose);
+    final key = GlobalKey();
+    Widget child(QueueIt<String> listened) => QueueItListener<String>(
+          key: key,
+          queue: listened,
+          listener: (context, snapshot) =>
+              events.add('${identical(listened, queue) ? 'queue' : 'other'}:'
+                  '${snapshot.eventItem?.data}'),
+          child: const SizedBox(),
+        );
+    await tester.pumpWidget(Column(children: [
+      Padding(padding: EdgeInsets.zero, child: child(queue)),
+    ]));
+
+    await tester.pumpWidget(Column(children: [
+      _Lifecycle(onInit: () => queue.add('during')),
+      Center(child: child(other)),
+      _Lifecycle(onInit: () => other.add('new')),
+    ]));
+    queue.add('ignored');
+
+    expect(events, ['other:new']);
+  });
+
   testWidgets('keeps listening when moved with a GlobalKey', (tester) async {
     final key = GlobalKey();
     Widget build({required bool wrapped}) {
