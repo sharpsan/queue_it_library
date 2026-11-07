@@ -171,6 +171,11 @@ widget is being removed, the listener isn't called any more.
   `builder` still gets the old queue's last snapshot. Updates from the old queue that were still
   waiting for the end of the frame don't reach `listener`.
 
+### Migrating from 0.10
+
+- queue_it 1.0.0 makes an item's `status`, `error` and `stackTrace` read-only. Check out the
+  migration notes in its [README](https://pub.dev/packages/queue_it).
+
 ### Migrating from 0.9
 
 - flutter_queue_it now exports queue_it, so you can remove the `package:queue_it/queue_it.dart`

@@ -1,3 +1,10 @@
+## 1.0.0
+
+* QueueIt's API is now stable: breaking changes only come with a new major version.
+* BREAKING CHANGE: an item's `status`, `error` and `stackTrace` are now read-only, so only the
+  queue changes them. To cancel or remove an item, use the queue's `cancel` and `remove` methods,
+  and to choose what happens to an item when its handler returns, set `QueueItem.nextStatus`.
+
 ## 0.10.1
 
 * Fix: `waitFor` gives the item as it finished, even when a listener then removes the item or
