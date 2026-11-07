@@ -2,7 +2,7 @@
 
 * flutter_queue_it's API is now stable: breaking changes only come with a new major version.
 * BREAKING CHANGE: requires queue_it 1.0.0, where an item's `status`, `error` and `stackTrace` are
-  read-only. See its changelog.
+  read-only, and `items.cancelled` and `OnUpdateCallback` are gone. See its changelog.
 * Docs: the README mentions the `material_ui` package, which newer Flutter versions use in place
   of `package:flutter/material.dart`.
 * The example app uses `material_ui` and builds with Flutter 3.50, so it needs Flutter 3.47 or

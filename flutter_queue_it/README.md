@@ -173,8 +173,9 @@ widget is being removed, the listener isn't called any more.
 
 ### Migrating from 0.10
 
-- queue_it 1.0.0 makes an item's `status`, `error` and `stackTrace` read-only. Check out the
-  migration notes in its [README](https://pub.dev/packages/queue_it).
+- queue_it 1.0.0 makes an item's `status`, `error` and `stackTrace` read-only, and removes the
+  names it deprecated in 0.10.0. Check out the migration notes in its
+  [README](https://pub.dev/packages/queue_it).
 
 ### Migrating from 0.9
 

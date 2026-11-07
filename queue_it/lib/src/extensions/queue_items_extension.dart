@@ -30,10 +30,6 @@ extension QueueItemsExtension<T> on Iterable<QueueItem<T>> {
         (item) => item.status == QueueItemStatus.canceled,
       );
 
-  /// The canceled items.
-  @Deprecated('Use canceled')
-  Iterable<QueueItem<T>> get cancelled => canceled;
-
   /// The share of the items that have finished, from 0 to 1, rounded to two
   /// decimal places. Items that are pending or processing haven't finished.
   /// It's 1 only when every item has finished, or when there are no items.

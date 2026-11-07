@@ -4,6 +4,8 @@
 * BREAKING CHANGE: an item's `status`, `error` and `stackTrace` are now read-only, so only the
   queue changes them. To cancel or remove an item, use the queue's `cancel` and `remove` methods,
   and to choose what happens to an item when its handler returns, set `QueueItem.nextStatus`.
+* BREAKING CHANGE: removed `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0. Use
+  `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
 
 ## 0.10.1
 

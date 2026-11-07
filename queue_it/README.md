@@ -240,6 +240,8 @@ For a more in-depth look at how to use QueueIt, check out the
 - An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
   use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
   handler returns, set `item.nextStatus` in the handler.
+- `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
+  and listen to `queue.onUpdate` for updates.
 
 ## Migrating from 0.9
 
