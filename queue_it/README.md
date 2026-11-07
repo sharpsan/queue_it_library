@@ -3,17 +3,18 @@
 [![Pub Version](https://img.shields.io/pub/v/queue_it?label=queue_it)](https://pub.dev/packages/queue_it)
 [![codecov](https://codecov.io/gh/sharpsan/queue_it_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/queue_it_library)
 
-QueueIt is designed to simplify the process of managing and processing queues in your Flutter and Dart
-applications.
+QueueIt makes dealing with queues in your Flutter and Dart apps easy, like uploading or downloading
+files a few at a time.
 
 ## Features
 
-- Queue management: Easily add, remove, cancel, and process items in a queue.
+- Queue management: Easily add, cancel and remove items.
 - Event listeners: Listen for updates to the queue and receive snapshots.
 - Concurrency: Control the number of items processed simultaneously.
-- Retries: Automatically retry failed items, with an optional delay between attempts.
-- Item statuses: See where each item is at, when it got there, and why it failed.
-- Waiting: Wait for a single item, or the whole queue, to finish.
+- Retries: Automatically retry failed items.
+- Progress: See each item's status and how much is done.
+- Flutter: Rebuild your widgets when the queue changes, with
+  [flutter_queue_it](https://pub.dev/packages/flutter_queue_it).
 
 ## Getting started
 
@@ -272,6 +273,8 @@ These come on top of the changes from 0.10 above.
   `Cannot fire new event` error, you don't need to anymore.
 - `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is deprecated.
 - QueueIt now requires Dart 3.5 or later.
+
+If QueueIt is useful to you, give it a like on [pub.dev](https://pub.dev/packages/queue_it).
 
 ## License
 

@@ -11,8 +11,9 @@
   next events, and the frame's other callbacks still run.
 * Docs: the README's example imports the `material_ui` package, which Flutter 3.50 uses in place
   of `package:flutter/material.dart`.
-* Example: the example app uses `material_ui`, so it needs Flutter 3.47 or later, and it builds
-  with Flutter 3.50. The package itself still supports Flutter 3.24.
+* Docs: the README and pub.dev page show the example app.
+* Example: the example app is now a photo uploader. It uses `material_ui`, so it needs Flutter 3.47
+  or later, and it builds with Flutter 3.50. The package itself still supports Flutter 3.24.
 
 ## 0.10.1
 

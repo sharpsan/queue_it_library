@@ -7,9 +7,13 @@
 [![codecov](https://codecov.io/gh/sharpsan/queue_it_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/queue_it_library)
 
 
+QueueIt makes dealing with queues in Flutter and Dart easy.
+
+![The example app uploading photos three at a time, with retries](flutter_queue_it/screenshots/example.webp)
+
 This is a monorepo containing the following packages:
 
-- [queue_it](https://github.com/sharpsan/queue_it_library/tree/main/queue_it): Queue handling with concurrency support for Dart.
+- [queue_it](https://github.com/sharpsan/queue_it_library/tree/main/queue_it): Queue handling with concurrency and retries for Dart.
 - [flutter_queue_it](https://github.com/sharpsan/queue_it_library/tree/main/flutter_queue_it): Provides **QueueItWidget**, which rebuilds when the queue changes, and **QueueItListener**, which calls back for every change.
 
 Please check out each project for more details and examples.

@@ -10,6 +10,8 @@ Provides the **`QueueItWidget`** widget that listens to the queue and automatica
 rebuilds on changes, and the **`QueueItListener`** widget that lets you react to every change
 without rebuilding.
 
+![The example app uploading photos three at a time, with retries](https://raw.githubusercontent.com/sharpsan/queue_it_library/main/flutter_queue_it/screenshots/example.webp)
+
 ### Getting started
 
 ```sh
@@ -196,3 +198,6 @@ These come on top of the changes from 0.10 above.
 
 For a more in-depth example, check out the
 [example project](https://pub.dev/packages/flutter_queue_it/example).
+
+If flutter_queue_it is useful to you, give it a like on
+[pub.dev](https://pub.dev/packages/flutter_queue_it).
