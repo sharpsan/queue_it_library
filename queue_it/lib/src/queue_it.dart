@@ -380,14 +380,14 @@ class QueueIt<T> {
   }
 
   /// Cancels every pending and processing item, as [cancel] does, and sends
-  /// one [QueueEvent.cancelledAll] event.
+  /// one [QueueEvent.canceledAll] event.
   void cancelAll() {
     final canceled = <QueueItem<T>>[];
     for (final entry in _items) {
       if (_cancel(entry.item)) canceled.add(entry.item);
     }
     canceled.forEach(_notifyWaiters);
-    _sendOnUpdateEvent(QueueEvent.cancelledAll, null);
+    _sendOnUpdateEvent(QueueEvent.canceledAll, null);
     _schedulePump();
   }
 

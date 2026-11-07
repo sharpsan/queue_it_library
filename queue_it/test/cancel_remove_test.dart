@@ -130,7 +130,7 @@ void main() {
 
       expect(gate.started, [1, 2]);
       expect(statuses(queue), ['1:completed', '2:canceled', '3:canceled']);
-      expect(events, contains('cancelledAll'));
+      expect(events, contains('canceledAll'));
     });
   });
 

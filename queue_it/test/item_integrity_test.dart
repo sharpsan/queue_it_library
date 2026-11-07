@@ -40,13 +40,13 @@ void main() async {
     expect(queueItem.status, QueueItemStatus.failed);
     expect(queueItem.failedAt, isNotNull);
 
-    /// failed -> cancelled
+    /// failed -> canceled
     expect(queueItem.canceledAt, isNull);
     queueItem.updateStatus(QueueItemStatus.canceled);
     expect(queueItem.status, QueueItemStatus.canceled);
     expect(queueItem.canceledAt, isNotNull);
 
-    /// cancelled -> removed
+    /// canceled -> removed
     expect(queueItem.removedAt, isNull);
     queueItem.updateStatus(QueueItemStatus.removed);
     expect(queueItem.status, QueueItemStatus.removed);

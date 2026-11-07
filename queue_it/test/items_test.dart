@@ -525,6 +525,7 @@ void main() {
       expect(items.progress, 1);
       expect(<QueueItem<int>>[].progress, 1);
       expect(items.summary, contains('Failed: 1'));
+      expect(items.summary, contains('Canceled: 1'));
     });
 
     test('keeps the progress short of 1 while items are left', () {

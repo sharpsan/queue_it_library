@@ -20,7 +20,7 @@ enum QueueEvent {
   removedAll,
 
   /// Every pending and processing item was canceled.
-  cancelledAll,
+  canceledAll,
 
   /// The queue has no items left to process, or it was stopped and the items
   /// it was processing have finished.

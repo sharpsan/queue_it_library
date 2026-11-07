@@ -155,7 +155,7 @@ Future<void> _run(int seed) async {
           problems.add('${item.id} was canceled after its last attempt');
         }
         statuses[item.id] = item.status;
-      case QueueEvent.cancelledAll:
+      case QueueEvent.canceledAll:
         statuses.updateAll((id, status) => status == QueueItemStatus.pending ||
                 status == QueueItemStatus.processing ||
                 retrying.contains(id)

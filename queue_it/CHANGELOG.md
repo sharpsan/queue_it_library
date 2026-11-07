@@ -6,6 +6,8 @@
   and to choose what happens to an item when its handler returns, set `QueueItem.nextStatus`.
 * BREAKING CHANGE: removed `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0. Use
   `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
+* BREAKING CHANGE: `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary`
+  counts canceled items as `Canceled`, matching the spelling everywhere else.
 
 ## 0.10.1
 
