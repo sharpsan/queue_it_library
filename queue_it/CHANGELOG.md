@@ -1,11 +1,12 @@
 ## 1.0.0
 
-* QueueIt's API is now stable: breaking changes only come with a new major version.
+* QueueIt's API is now stable: breaking changes only come with a new major version. New
+  `QueueEvent`s may still come in minor versions.
 * BREAKING CHANGE: an item's `status`, `error` and `stackTrace` are now read-only, so only the
   queue changes them. To cancel or remove an item, use the queue's `cancel` and `remove` methods,
   and to choose what happens to an item when its handler returns, set `QueueItem.nextStatus`.
-  Items you make yourself, for example in tests, get their status from the constructor or
-  `copyWith`.
+  Items you make yourself, for example in tests, get their status from the constructor, and their
+  `error` and `stackTrace` from `copyWith`.
 * BREAKING CHANGE: removed `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0. Use
   `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
 * BREAKING CHANGE: `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary`

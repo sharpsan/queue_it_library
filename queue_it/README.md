@@ -181,7 +181,7 @@ copies you get in snapshots, and `cancelAll` and `removeAll` work on every item.
 ### Waiting for an item
 
 `waitFor` completes with a copy of the item once it's completed, canceled or removed, or failed
-with no retries left:
+with no retries left. Make sure the queue is started, or the item won't be processed:
 
 ```dart
 final item = await queue.waitFor(queue.add(7));
@@ -207,7 +207,9 @@ queue.onUpdate.listen((snapshot) {
 });
 ```
 
-Every failed attempt sends a `failed` update, including the ones that will be retried.
+Every failed attempt sends a `failed` update, including the ones that will be retried. New events
+may come in minor versions, so in a `switch` over `snapshot.event`, handle the ones you need and use
+a default case for the rest.
 
 `snapshot.items` holds the items of the current batch. These are the queue's own items, so they keep
 changing after the update. If you need them as they were at the time, create the queue with
@@ -239,10 +241,13 @@ For a more in-depth look at how to use QueueIt, check out the
 
 - An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
   use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
-  handler returns, set `item.nextStatus` in the handler. Items you make yourself, for example in
-  tests, get their status from the constructor or `copyWith`.
+  handler returns, set `item.nextStatus` in the handler.
+- Items you make yourself, for example in tests, get their status from the constructor, which
+  records when they got there, and their `error` and `stackTrace` from `copyWith`:
+  `QueueItem(data: 'a', batchId: 'b', status: QueueItemStatus.failed).copyWith(error: e)`.
 - `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
-  and listen to `queue.onUpdate` for updates.
+  and listen to `queue.onUpdate` for updates. If you used `OnUpdateCallback` as a type, declare
+  your own.
 - `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
   instead of `Cancelled`.
 
