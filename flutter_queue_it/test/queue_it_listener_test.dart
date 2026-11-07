@@ -406,6 +406,37 @@ void main() {
     expect(events, ['throws', 'next', 'after']);
   });
 
+  testWidgets(
+      'carries on when FlutterError.onError throws for an event sent during '
+      'a build', (tester) async {
+    Widget build(Widget child) => QueueItListener<String>(
+          queue: queue,
+          listener: (context, snapshot) {
+            events.add('${snapshot.eventItem?.data}');
+            if (snapshot.eventItem?.data == 'throws') {
+              throw StateError('listener failed');
+            }
+          },
+          child: child,
+        );
+    await tester.pumpWidget(build(const SizedBox()));
+
+    final onError = FlutterError.onError;
+    var reports = 0;
+    FlutterError.onError = (details) {
+      if (++reports == 1) throw details.exception;
+    };
+    try {
+      await tester
+          .pumpWidget(build(_Lifecycle(onInit: () => queue.add('throws'))));
+    } finally {
+      FlutterError.onError = onError;
+    }
+
+    queue.add('after');
+    expect(events, ['throws', 'after']);
+  });
+
   testWidgets("drops the old queue's events when moved and given a new queue",
       (tester) async {
     final other = QueueIt<String>(itemHandler: (item) {});
