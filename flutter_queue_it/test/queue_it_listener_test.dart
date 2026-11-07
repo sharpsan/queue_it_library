@@ -427,14 +427,16 @@ void main() {
       if (++reports == 1) throw details.exception;
     };
     try {
-      await tester
-          .pumpWidget(build(_Lifecycle(onInit: () => queue.add('throws'))));
+      await tester.pumpWidget(build(_Lifecycle(
+          onInit: () => queue
+            ..add('throws')
+            ..add('next'))));
     } finally {
       FlutterError.onError = onError;
     }
 
     queue.add('after');
-    expect(events, ['throws', 'after']);
+    expect(events, ['throws', 'next', 'after']);
   });
 
   testWidgets("drops the old queue's events when moved and given a new queue",
