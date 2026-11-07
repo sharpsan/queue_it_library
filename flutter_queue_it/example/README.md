@@ -15,6 +15,9 @@ You can:
 - Swipe a photo away to remove it.
 - Clear the finished photos.
 
+QueueIt doesn't interrupt a handler that's already running, so when you cancel or remove a photo,
+the example stops its upload itself.
+
 ### Running the example
 
 The example needs Flutter 3.47 or later. From this folder:
