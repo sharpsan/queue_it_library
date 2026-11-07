@@ -24,43 +24,43 @@ void main() async {
 
     /// pending -> processing
     expect(queueItem.startedProcessingAt, isNull);
-    queueItem.status = QueueItemStatus.processing;
+    queueItem.updateStatus(QueueItemStatus.processing);
     expect(queueItem.status, QueueItemStatus.processing);
     expect(queueItem.startedProcessingAt, isNotNull);
 
     /// processing -> completed
     expect(queueItem.completedAt, isNull);
-    queueItem.status = QueueItemStatus.completed;
+    queueItem.updateStatus(QueueItemStatus.completed);
     expect(queueItem.status, QueueItemStatus.completed);
     expect(queueItem.completedAt, isNotNull);
 
     /// completed -> failed
     expect(queueItem.failedAt, isNull);
-    queueItem.status = QueueItemStatus.failed;
+    queueItem.updateStatus(QueueItemStatus.failed);
     expect(queueItem.status, QueueItemStatus.failed);
     expect(queueItem.failedAt, isNotNull);
 
     /// failed -> cancelled
     expect(queueItem.canceledAt, isNull);
-    queueItem.status = QueueItemStatus.canceled;
+    queueItem.updateStatus(QueueItemStatus.canceled);
     expect(queueItem.status, QueueItemStatus.canceled);
     expect(queueItem.canceledAt, isNotNull);
 
     /// cancelled -> removed
     expect(queueItem.removedAt, isNull);
-    queueItem.status = QueueItemStatus.removed;
+    queueItem.updateStatus(QueueItemStatus.removed);
     expect(queueItem.status, QueueItemStatus.removed);
     expect(queueItem.removedAt, isNotNull);
 
     /// removed -> pending
     expect(queueItem.queuedAt, isNotNull);
-    queueItem.status = QueueItemStatus.pending;
+    queueItem.updateStatus(QueueItemStatus.pending);
     expect(queueItem.status, QueueItemStatus.pending);
     expect(queueItem.queuedAt, isNotNull);
     expect(queueItem.retryCount, 1);
 
     /// test changing to same status - should have no effect
-    queueItem.status = QueueItemStatus.pending;
+    queueItem.updateStatus(QueueItemStatus.pending);
     expect(queueItem.retryCount, 1);
   });
 }

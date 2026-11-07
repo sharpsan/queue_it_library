@@ -118,6 +118,9 @@ Every item has a `status`:
 - `canceled`: Canceled with `cancel`, `cancelById` or `cancelAll`.
 - `removed`: Removed from the queue with `remove`, `removeById` or `removeAll`.
 
+Only the queue changes an item, so `status`, `error` and `stackTrace` are read-only. To change
+what happens to an item, use the queue's methods, or `nextStatus` from the item handler.
+
 Items also record when they got to each status (`queuedAt`, `startedProcessingAt`, `completedAt`,
 `failedAt`, `canceledAt` and `removedAt`), and any list of items has some helpers:
 
@@ -231,6 +234,12 @@ that are still running aren't interrupted, but their results are ignored.
 
 For a more in-depth look at how to use QueueIt, check out the
 [example project](https://pub.dev/packages/queue_it/example).
+
+## Migrating from 0.10
+
+- An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
+  use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
+  handler returns, set `item.nextStatus` in the handler.
 
 ## Migrating from 0.9
 

@@ -1,13 +1,14 @@
 import 'package:queue_it/src/models/queue_item_status.dart';
 import 'package:uuid/uuid.dart';
 
-//TODO: should this be an immutable object?  Will that improve performance?
 /// An item in a queue: its data, its status and when the status changed.
 ///
 /// The queue creates items when you add data to it and passes them to its
 /// item handler. The queue's own items are live: their status changes as the
-/// queue processes them. A snapshot's `eventItem` is a copy, made with
-/// [copyWith], and so are its `items` if the queue copies them.
+/// queue processes them. Only the queue changes them: to cancel or remove an
+/// item, use the queue's methods, and to choose what happens to an item when
+/// its handler returns, set [nextStatus]. A snapshot's `eventItem` is a copy,
+/// made with [copyWith], and so are its `items` if the queue copies them.
 class QueueItem<T> {
   /// Creates an item with [status]. Without an [id], it gets a random UUID.
   QueueItem({
@@ -16,7 +17,7 @@ class QueueItem<T> {
     required this.batchId,
     String? id,
   }) : id = id ?? const Uuid().v4() {
-    this.status = status;
+    _setStatus(status);
   }
 
   /// The unique id of the item.
@@ -68,10 +69,10 @@ class QueueItem<T> {
   /// attempt has failed or the handler failed it through [nextStatus].
   ///
   /// The queue keeps it when a later attempt succeeds.
-  Object? error;
+  Object? get error => _error;
 
   /// The stack trace of [error].
-  StackTrace? stackTrace;
+  StackTrace? get stackTrace => _stackTrace;
 
   /// When the item last became [QueueItemStatus.pending]: when it was added,
   /// or when it was queued again.
@@ -96,6 +97,9 @@ class QueueItem<T> {
 
   int? _retryCount;
 
+  Object? _error;
+  StackTrace? _stackTrace;
+
   DateTime? _queuedAt;
   DateTime? _startedProcessingAt;
   DateTime? _completedAt;
@@ -104,12 +108,7 @@ class QueueItem<T> {
   DateTime? _removedAt;
 
   /// Changes the status and records when it changed.
-  ///
-  /// The queue sets this as it processes the item, and doesn't notice when
-  /// anything else does. To change the status of an item in a queue, use the
-  /// queue's `cancel` and `remove` methods, or [nextStatus] from the item's
-  /// handler.
-  set status(QueueItemStatus value) {
+  void _setStatus(QueueItemStatus value) {
     if (value == _status) return;
     final now = DateTime.now();
     switch (value) {
@@ -189,7 +188,6 @@ class QueueItem<T> {
       batchId: batchId ?? this.batchId,
       status: status ?? this.status,
     )
-      ..status = status ?? this.status
       .._retryCount = retryCount ?? this.retryCount
       .._queuedAt = queuedAt ?? this.queuedAt
       .._startedProcessingAt = startedProcessingAt ?? this.startedProcessingAt
@@ -197,7 +195,20 @@ class QueueItem<T> {
       .._failedAt = failedAt ?? this.failedAt
       .._canceledAt = canceledAt ?? this.canceledAt
       .._removedAt = removedAt ?? this.removedAt
-      ..error = error ?? this.error
-      ..stackTrace = stackTrace ?? this.stackTrace;
+      .._error = error ?? this.error
+      .._stackTrace = stackTrace ?? this.stackTrace;
+  }
+}
+
+/// How the queue changes its items. The public library hides it, so only the
+/// queue changes an item.
+extension QueueItemUpdates<T> on QueueItem<T> {
+  /// Changes the status and records when it changed.
+  void updateStatus(QueueItemStatus status) => _setStatus(status);
+
+  /// Records why the item's last attempt failed.
+  void recordError(Object? error, StackTrace? stackTrace) {
+    _error = error;
+    _stackTrace = stackTrace;
   }
 }

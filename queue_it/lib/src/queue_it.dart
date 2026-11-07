@@ -350,7 +350,7 @@ class QueueIt<T> {
     }
     _retryTimers.clear();
     for (final item in removed) {
-      item.status = QueueItemStatus.removed;
+      item.updateStatus(QueueItemStatus.removed);
     }
     removed.forEach(_notifyWaiters);
     _sendOnUpdateEvent(QueueEvent.removedAll, null);
@@ -532,7 +532,7 @@ class QueueIt<T> {
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
-    item.status = QueueItemStatus.canceled;
+    item.updateStatus(QueueItemStatus.canceled);
     return true;
   }
 
@@ -544,7 +544,7 @@ class QueueIt<T> {
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
-    item.status = QueueItemStatus.removed;
+    item.updateStatus(QueueItemStatus.removed);
     _notifyWaiters(item);
     _sendOnUpdateEvent(QueueEvent.itemRemoved, item);
   }
@@ -630,7 +630,7 @@ class QueueIt<T> {
     // Listeners can stop or dispose the queue, or cancel or remove the item,
     // before its handler starts.
     if (_isStarted && item.status == QueueItemStatus.pending) {
-      item.status = QueueItemStatus.processing;
+      item.updateStatus(QueueItemStatus.processing);
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else if (item.status == QueueItemStatus.pending) {
       _enqueue(item, retry: waiting.isRetry, first: true);
@@ -672,19 +672,19 @@ class QueueIt<T> {
     }
     switch (nextStatus) {
       case null || QueueItemStatus.completed:
-        item.status = QueueItemStatus.completed;
+        item.updateStatus(QueueItemStatus.completed);
         _notifyWaiters(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.failed:
         _fail(item, null, null);
       case QueueItemStatus.canceled:
-        item.status = QueueItemStatus.canceled;
+        item.updateStatus(QueueItemStatus.canceled);
         _notifyWaiters(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.removed:
         _remove(item);
       case QueueItemStatus.pending:
-        item.status = QueueItemStatus.pending;
+        item.updateStatus(QueueItemStatus.pending);
         _enqueue(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.processing:
@@ -703,9 +703,8 @@ class QueueIt<T> {
     // queue.
     if (_isDisposing || item.status != QueueItemStatus.processing) return;
     item
-      ..error = error
-      ..stackTrace = stackTrace
-      ..status = QueueItemStatus.failed;
+      ..recordError(error, stackTrace)
+      ..updateStatus(QueueItemStatus.failed);
     if (delay == null) {
       _notifyWaiters(item);
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
@@ -723,7 +722,7 @@ class QueueIt<T> {
     // A listener canceled or removed it.
     if (item.status != QueueItemStatus.failed) return;
 
-    item.status = QueueItemStatus.pending;
+    item.updateStatus(QueueItemStatus.pending);
     // A listener disposed the queue. The item stays pending, like the other
     // items that were waiting.
     if (_isDisposing) return;
