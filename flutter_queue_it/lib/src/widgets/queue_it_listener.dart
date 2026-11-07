@@ -124,18 +124,17 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     _isDeliveryScheduled = false;
     final deferred = _deferred;
     if (!mounted || deferred == null) return;
-    (Object, StackTrace)? failure;
     // Events the listener causes join the list, so they stay in order.
     for (var i = 0; i < deferred.length; i++) {
       try {
         _call(deferred[i]);
       } catch (error, stack) {
-        // FlutterError.onError threw. Deliver the other events first.
-        failure ??= (error, stack);
+        // FlutterError.onError threw. Pass that on to the zone, as for an event
+        // sent right away, and carry on, so the frame's other callbacks run.
+        Zone.current.handleUncaughtError(error, stack);
       }
     }
     _deferred = null;
-    if (failure != null) Error.throwWithStackTrace(failure.$1, failure.$2);
   }
 
   /// Calls the listener, reporting what it throws to [FlutterError.onError].

@@ -406,37 +406,53 @@ void main() {
     expect(events, ['throws', 'next', 'after']);
   });
 
-  testWidgets(
-      'carries on when FlutterError.onError throws for an event sent during '
-      'a build', (tester) async {
-    Widget build(Widget child) => QueueItListener<String>(
+  testWidgets('carries on when FlutterError.onError throws', (tester) async {
+    Widget listener(String name) => QueueItListener<String>(
           queue: queue,
           listener: (context, snapshot) {
-            events.add('${snapshot.eventItem?.data}');
-            if (snapshot.eventItem?.data == 'throws') {
-              throw StateError('listener failed');
-            }
+            final data = snapshot.eventItem?.data;
+            events.add('$name:$data');
+            if (data == 'throws') throw StateError('listener failed');
           },
-          child: child,
+          child: const SizedBox(),
         );
-    await tester.pumpWidget(build(const SizedBox()));
-
     final onError = FlutterError.onError;
-    var reports = 0;
-    FlutterError.onError = (details) {
-      if (++reports == 1) throw details.exception;
-    };
+    FlutterError.onError = (details) => throw details.exception;
+    final zoneErrors = <Object>[];
     try {
-      await tester.pumpWidget(build(_Lifecycle(
-          onInit: () => queue
-            ..add('throws')
-            ..add('next'))));
+      await runZonedGuarded(() async {
+        await tester
+            .pumpWidget(Column(children: [listener('a'), listener('b')]));
+
+        /// Sent while Flutter builds, so held back until after the frame
+        await tester.pumpWidget(Column(children: [
+          listener('a'),
+          listener('b'),
+          _Lifecycle(
+              onInit: () => queue
+                ..add('throws')
+                ..add('next')),
+        ]));
+
+        /// Sent right away
+        queue.add('throws');
+      }, (error, stack) => zoneErrors.add(error));
     } finally {
       FlutterError.onError = onError;
     }
 
     queue.add('after');
-    expect(events, ['throws', 'next', 'after']);
+    expect(events, [
+      'a:throws',
+      'a:next',
+      'b:throws',
+      'b:next',
+      'a:throws',
+      'b:throws',
+      'a:after',
+      'b:after',
+    ]);
+    expect(zoneErrors, hasLength(4));
   });
 
   testWidgets("drops the old queue's events when moved and given a new queue",
