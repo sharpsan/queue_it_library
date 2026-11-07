@@ -349,6 +349,24 @@ void main() {
     expect(events, ['new:during', 'new:after']);
   });
 
+  testWidgets('reports a listener that throws, and carries on', (tester) async {
+    await tester.pumpWidget(QueueItListener<String>(
+      queue: queue,
+      listener: (context, snapshot) {
+        events.add('${snapshot.eventItem?.data}');
+        if (snapshot.eventItem?.data == 'throws') {
+          throw StateError('listener failed');
+        }
+      },
+      child: const SizedBox(),
+    ));
+
+    queue.add('throws');
+    expect(tester.takeException(), isStateError);
+    queue.add('next');
+    expect(events, ['throws', 'next']);
+  });
+
   testWidgets(
       'reports a listener that throws for an event sent during a '
       'move, and carries on', (tester) async {

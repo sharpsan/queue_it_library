@@ -4,6 +4,9 @@
 * BREAKING CHANGE: requires queue_it 1.0.0, where an item's `status`, `error` and `stackTrace` are
   read-only, `items.cancelled` and `OnUpdateCallback` are gone, and `QueueEvent.cancelledAll` is
   now `canceledAll`. See its changelog.
+* Fix: whatever a `QueueItListener`'s listener throws is reported to `FlutterError.onError`, like
+  errors in other widgets. Before, that only happened for events sent while Flutter was building,
+  and the others went to the zone.
 * Docs: the README mentions the `material_ui` package, which newer Flutter versions use in place
   of `package:flutter/material.dart`.
 * The example app uses `material_ui` and builds with Flutter 3.50, so it needs Flutter 3.47 or

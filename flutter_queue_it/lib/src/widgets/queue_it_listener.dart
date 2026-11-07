@@ -32,6 +32,9 @@ import 'package:flutter/widgets.dart';
 /// order right after that frame instead, when it can use its context to show
 /// a SnackBar or change other widgets' state.
 ///
+/// If the listener throws, the error is reported to [FlutterError.onError],
+/// and the next events still reach it.
+///
 /// The listener isn't called once the widget is being removed: the events
 /// still waiting for the end of the frame are dropped with it. When the widget
 /// moves to a new place in the tree (with a [GlobalKey]), the events sent
@@ -123,18 +126,23 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     if (!mounted || deferred == null) return;
     // Events the listener causes join the list, so they stay in order.
     for (var i = 0; i < deferred.length; i++) {
-      try {
-        widget.listener(context, deferred[i]);
-      } catch (error, stack) {
-        FlutterError.reportError(FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'flutter_queue_it',
-          context: ErrorDescription('while calling a QueueItListener'),
-        ));
-      }
+      _call(deferred[i]);
     }
     _deferred = null;
+  }
+
+  /// Calls the listener, reporting what it throws to [FlutterError.onError].
+  void _call(QueueSnapshot<T> snapshot) {
+    try {
+      widget.listener(context, snapshot);
+    } catch (error, stack) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'flutter_queue_it',
+        context: ErrorDescription('while calling a QueueItListener'),
+      ));
+    }
   }
 
   @override
@@ -157,7 +165,7 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
         _deferred = [snapshot];
         _scheduleDelivery();
       } else {
-        widget.listener(context, snapshot);
+        _call(snapshot);
       }
     });
   }
