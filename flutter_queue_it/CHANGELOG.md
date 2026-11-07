@@ -1,6 +1,7 @@
 ## 1.0.0
 
-* flutter_queue_it's API is now stable: breaking changes only come with a new major version.
+* flutter_queue_it's API is now stable: breaking changes only come with a new major version. New
+  `QueueEvent`s may still come in minor versions.
 * BREAKING CHANGE: requires queue_it 1.0.0, where an item's `status`, `error` and `stackTrace` are
   read-only, `items.cancelled` and `OnUpdateCallback` are gone, and `QueueEvent.cancelledAll` is
   now `canceledAll`. See its changelog.

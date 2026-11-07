@@ -63,4 +63,30 @@ void main() async {
     queueItem.updateStatus(QueueItemStatus.pending);
     expect(queueItem.retryCount, 1);
   });
+
+  test('copyWith replaces only the given fields', () {
+    final error = StateError('boom');
+    final item = QueueItem(
+      batchId: 'a',
+      data: 1,
+      status: QueueItemStatus.failed,
+    )..nextStatus = QueueItemStatus.pending;
+
+    /// The constructor records when the item got to its status
+    expect(item.failedAt, isNotNull);
+
+    final failed = item.copyWith(error: error);
+    expect(failed.id, item.id);
+    expect(failed.status, QueueItemStatus.failed);
+    expect(failed.failedAt, item.failedAt);
+    expect(failed.error, same(error));
+    expect(failed.nextStatus, isNull);
+
+    /// A new status keeps the times the item reached each status
+    final completed = failed.copyWith(status: QueueItemStatus.completed);
+    expect(completed.status, QueueItemStatus.completed);
+    expect(completed.completedAt, isNull);
+    expect(completed.failedAt, item.failedAt);
+    expect(completed.error, same(error));
+  });
 }
