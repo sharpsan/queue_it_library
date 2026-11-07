@@ -16,17 +16,22 @@ without rebuilding.
 flutter pub add flutter_queue_it
 ```
 
-flutter_queue_it exports queue_it, so it's the only package you need to add and import. It requires
-Dart 3.5 and Flutter 3.24 or later.
+flutter_queue_it exports queue_it, so you don't need to add or import queue_it as well. It
+requires Dart 3.5 and Flutter 3.24 or later.
 
 ### Example
 
-This app processes "uploads" two at a time and lists them with their status:
+This app processes "uploads" two at a time and lists them with their status. It gets its Material
+widgets from the [material_ui](https://pub.dev/packages/material_ui) package, so add that too:
+
+```sh
+flutter pub add material_ui
+```
 
 ```dart
 // lib/main.dart
-import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() => runApp(const MaterialApp(home: UploadsPage()));
 
@@ -102,9 +107,8 @@ class _UploadsPageState extends State<UploadsPage> {
 }
 ```
 
-Newer Flutter versions deprecate `package:flutter/material.dart` in favor of the
-[material_ui](https://pub.dev/packages/material_ui) package. On Flutter 3.47 or later, add it with
-`flutter pub add material_ui` and import `package:material_ui/material_ui.dart` instead.
+material_ui needs Flutter 3.47 or later. On older versions, skip it and import
+`package:flutter/material.dart` instead.
 
 ### Rebuilding less often
 
