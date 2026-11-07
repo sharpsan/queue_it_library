@@ -421,21 +421,27 @@ void main() {
     final zoneErrors = <Object>[];
     try {
       await runZonedGuarded(() async {
-        await tester
-            .pumpWidget(Column(children: [listener('a'), listener('b')]));
+        // Errors don't leave the zone through its future, so catch them here,
+        // or a failure would hang the test.
+        try {
+          await tester
+              .pumpWidget(Column(children: [listener('a'), listener('b')]));
 
-        /// Sent while Flutter builds, so held back until after the frame
-        await tester.pumpWidget(Column(children: [
-          listener('a'),
-          listener('b'),
-          _Lifecycle(
-              onInit: () => queue
-                ..add('throws')
-                ..add('next')),
-        ]));
+          /// Sent while Flutter builds, so held back until after the frame
+          await tester.pumpWidget(Column(children: [
+            listener('a'),
+            listener('b'),
+            _Lifecycle(
+                onInit: () => queue
+                  ..add('throws')
+                  ..add('next')),
+          ]));
 
-        /// Sent right away
-        queue.add('throws');
+          /// Sent right away
+          queue.add('throws');
+        } catch (error) {
+          zoneErrors.add(error);
+        }
       }, (error, stack) => zoneErrors.add(error));
     } finally {
       FlutterError.onError = onError;

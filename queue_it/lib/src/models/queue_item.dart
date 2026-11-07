@@ -63,7 +63,7 @@ class QueueItem<T> {
   ///
   /// If the handler throws, the attempt fails, whatever it set. The queue
   /// clears it as the item starts processing, so a value set before then
-  /// doesn't count, and again as it applies the attempt's outcome.
+  /// doesn't count, and again before it applies the attempt's outcome.
   QueueItemStatus? nextStatus;
 
   /// The error that made the item's last failed attempt fail, or null if no
