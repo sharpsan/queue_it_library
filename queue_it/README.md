@@ -248,6 +248,8 @@ For a more in-depth look at how to use QueueIt, check out the
 - `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
   and listen to `queue.onUpdate` for updates. If you used `OnUpdateCallback` as a type, declare
   your own.
+- `nextStatus` only counts when it's set while the item is processing, usually by its handler. A
+  value set before then, for example on a pending item, is ignored.
 - `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
   instead of `Cancelled`.
 

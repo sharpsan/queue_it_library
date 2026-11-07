@@ -312,7 +312,7 @@ void main() {
       expect(item.nextStatus, isNull);
     });
 
-    test('only counts when set while the handler runs', () async {
+    test('only counts once the item is processing', () async {
       final runs = <int>[];
       final queue = QueueIt<int>(
         retries: 1,
@@ -324,21 +324,28 @@ void main() {
       addTearDown(queue.dispose);
       queue.onUpdate.listen((snapshot) {
         final item = snapshot.eventItem;
+        if (item == null) return;
+        final live = queue.items().elementAt(item.data - 1);
         // Set between an attempt that will be retried and its retry.
-        if (item?.data == 2 && item?.status == QueueItemStatus.failed) {
-          queue.items().last.nextStatus = QueueItemStatus.removed;
+        if (item.data == 2 && item.status == QueueItemStatus.failed) {
+          live.nextStatus = QueueItemStatus.removed;
+        }
+        // Set as the item starts processing.
+        if (item.data == 3 && item.status == QueueItemStatus.processing) {
+          live.nextStatus = QueueItemStatus.canceled;
         }
       });
       queue
         ..add(1)
-        ..add(2);
+        ..add(2)
+        ..add(3);
       // Set before the first attempt.
       queue.items().first.nextStatus = QueueItemStatus.canceled;
       queue.start();
       await queue.running;
 
-      expect(runs, [1, 2, 2]);
-      expect(statuses(queue), ['1:completed', '2:completed']);
+      expect(runs, [1, 2, 2, 3]);
+      expect(statuses(queue), ['1:completed', '2:completed', '3:canceled']);
     });
   });
 

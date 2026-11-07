@@ -631,7 +631,10 @@ class QueueIt<T> {
     // Listeners can stop or dispose the queue, or cancel or remove the item,
     // before its handler starts.
     if (_isStarted && item.status == QueueItemStatus.pending) {
-      item.updateStatus(QueueItemStatus.processing);
+      // A nextStatus set while the item waited doesn't decide this attempt.
+      item
+        ..nextStatus = null
+        ..updateStatus(QueueItemStatus.processing);
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else if (item.status == QueueItemStatus.pending) {
       _enqueue(item, retry: waiting.isRetry, first: true);
@@ -641,9 +644,6 @@ class QueueIt<T> {
       return;
     }
 
-    // Only the handler chooses the attempt's outcome, so a nextStatus set
-    // before it starts doesn't count.
-    item.nextStatus = null;
     Object? error;
     StackTrace? stackTrace;
     try {

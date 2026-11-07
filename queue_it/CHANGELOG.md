@@ -11,8 +11,9 @@
   `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
 * BREAKING CHANGE: `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary`
   counts canceled items as `Canceled`, matching the spelling everywhere else.
-* Fix: `nextStatus` only counts when it's set while the item's handler runs. The queue clears it
-  as the handler starts, so a value set before then no longer decides the attempt's outcome.
+* Fix: `nextStatus` only counts when it's set while the item is processing, usually by its
+  handler. The queue clears it as the item starts processing, so a value set before then no
+  longer decides the attempt's outcome.
 
 ## 0.10.1
 
