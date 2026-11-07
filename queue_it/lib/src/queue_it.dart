@@ -164,7 +164,8 @@ class QueueIt<T> {
 
   /// Whether snapshots hold copies of the items instead of the queue's live
   /// items. Copying costs time for every event, in proportion to the size of
-  /// the current batch.
+  /// the current batch. The copies are made with [QueueItem.copyWith], so
+  /// they share the items' `data`.
   final bool deepCopyItemsInSnapshot;
 
   /// The function that processes each item.
@@ -203,16 +204,16 @@ class QueueIt<T> {
   /// provided, only items in that batch are returned.
   ///
   /// These are the queue's live items, in a lazy view of its list: copy it
-  /// with `toList()` before changing the queue while iterating it.
+  /// with `toList()` before adding or removing items while iterating it.
   Iterable<QueueItem<T>> items([String? batchId]) => batchId == null
       ? _items.map((entry) => entry.item)
       : _BatchItems(this, batchId);
 
   /// A snapshot of the queue for every change, sent synchronously.
   ///
-  /// Listeners can call the queue. Events that causes are sent once the
-  /// current event has reached every listener, so every listener gets the
-  /// events in order. A queue with no listeners builds no snapshots.
+  /// Listeners can call the queue. The events those calls cause are sent
+  /// once the current event has reached every listener, so every listener
+  /// gets the events in order. A queue with no listeners builds no snapshots.
   Stream<QueueSnapshot<T>> get onUpdate => _onUpdateStreamController.stream;
 
   /// The last time the queue was started.

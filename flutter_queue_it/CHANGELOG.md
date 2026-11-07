@@ -9,8 +9,8 @@
   and the others went to the zone.
 * Docs: the README mentions the `material_ui` package, which newer Flutter versions use in place
   of `package:flutter/material.dart`.
-* The example app uses `material_ui` and builds with Flutter 3.50, so it needs Flutter 3.47 or
-  later. The package itself still supports Flutter 3.24.
+* Example: the example app uses `material_ui`, so it needs Flutter 3.47 or later, and it builds
+  with Flutter 3.50. The package itself still supports Flutter 3.24.
 
 ## 0.10.1
 

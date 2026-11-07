@@ -163,8 +163,10 @@ class QueueItem<T> {
     return s.toString();
   }
 
-  /// Returns a copy of the item, with any of its fields replaced.
+  /// Returns a copy of the item, with the given fields replaced.
   ///
+  /// The other fields keep the item's values: a new [status] doesn't change
+  /// when the item reached each status, and [nextStatus] isn't copied.
   /// The copy is a separate object: it doesn't change as the original does.
   /// Queue methods that take an item find the queue's item by its [id], so
   /// they work with copies too.

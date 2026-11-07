@@ -177,8 +177,11 @@ widget is being removed, the listener isn't called any more.
   `QueueEvent.cancelledAll` to `canceledAll`, and removes the names it deprecated in 0.10.0.
   Check out the migration notes in its
   [README](https://pub.dev/packages/queue_it).
+- If you also depend on `queue_it` directly, raise it to `^1.0.0`.
 
 ### Migrating from 0.9
+
+These come on top of the changes from 0.10 above.
 
 - flutter_queue_it now exports queue_it, so you can remove the `package:queue_it/queue_it.dart`
   import (the analyzer reports it as unnecessary) and the `queue_it` dependency. If you keep the

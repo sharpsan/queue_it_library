@@ -16,7 +16,7 @@ You can:
 
 ### Running the example
 
-From this folder:
+The example needs Flutter 3.47 or later. From this folder:
 
 ```sh
 flutter run

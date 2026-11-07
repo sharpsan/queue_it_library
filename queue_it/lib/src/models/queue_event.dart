@@ -1,4 +1,7 @@
 /// What happened to a queue, as told by each snapshot on its `onUpdate` stream.
+///
+/// New events may be added in minor versions, so give a `switch` over them a
+/// default case.
 enum QueueEvent {
   /// An item was added. The snapshot's `eventItem` is the new item.
   itemAdded,

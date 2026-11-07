@@ -32,8 +32,9 @@ class QueueSnapshot<T> {
   ///
   /// Unless the queue was created with `deepCopyItemsInSnapshot: true`, this
   /// is a live view of the queue's items: iterating it later shows the items
-  /// as they are then, and changing the queue while iterating it throws a
-  /// [ConcurrentModificationError]. Copy it with `toList()` to keep it.
+  /// as they are then, and adding or removing items while iterating it
+  /// throws a [ConcurrentModificationError]. Copy it with `toList()` to keep
+  /// it.
   final Iterable<QueueItem<T>> items;
 
   /// When the queue was last started.

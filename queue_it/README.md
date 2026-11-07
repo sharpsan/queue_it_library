@@ -239,13 +239,16 @@ For a more in-depth look at how to use QueueIt, check out the
 
 - An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
   use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
-  handler returns, set `item.nextStatus` in the handler.
+  handler returns, set `item.nextStatus` in the handler. Items you make yourself, for example in
+  tests, get their status from the constructor or `copyWith`.
 - `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
   and listen to `queue.onUpdate` for updates.
 - `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
   instead of `Cancelled`.
 
 ## Migrating from 0.9
+
+These come on top of the changes from 0.10 above.
 
 - Items that run out of retries are now `failed` instead of `canceled`, and `item.error` and
   `item.stackTrace` hold the last error. If you looked for canceled items to find failures, look
