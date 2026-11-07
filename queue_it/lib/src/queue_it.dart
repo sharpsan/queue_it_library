@@ -640,6 +640,9 @@ class QueueIt<T> {
       return;
     }
 
+    // Only the handler chooses the attempt's outcome, so a nextStatus set
+    // before it starts doesn't count.
+    item.nextStatus = null;
     Object? error;
     StackTrace? stackTrace;
     try {

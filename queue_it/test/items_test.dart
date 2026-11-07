@@ -311,6 +311,35 @@ void main() {
       expect(item.status, QueueItemStatus.completed);
       expect(item.nextStatus, isNull);
     });
+
+    test('only counts when set while the handler runs', () async {
+      final runs = <int>[];
+      final queue = QueueIt<int>(
+        retries: 1,
+        itemHandler: (item) {
+          runs.add(item.data);
+          if (item.data == 2 && item.retryCount == 0) throw Exception('retry');
+        },
+      );
+      addTearDown(queue.dispose);
+      queue.onUpdate.listen((snapshot) {
+        final item = snapshot.eventItem;
+        // Set between an attempt that will be retried and its retry.
+        if (item?.data == 2 && item?.status == QueueItemStatus.failed) {
+          queue.items().last.nextStatus = QueueItemStatus.removed;
+        }
+      });
+      queue
+        ..add(1)
+        ..add(2);
+      // Set before the first attempt.
+      queue.items().first.nextStatus = QueueItemStatus.canceled;
+      queue.start();
+      await queue.running;
+
+      expect(runs, [1, 2, 2]);
+      expect(statuses(queue), ['1:completed', '2:completed']);
+    });
   });
 
   group('waitFor', () {
