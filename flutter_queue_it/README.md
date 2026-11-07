@@ -102,6 +102,10 @@ class _UploadsPageState extends State<UploadsPage> {
 }
 ```
 
+Newer Flutter versions deprecate `package:flutter/material.dart` in favor of the
+[material_ui](https://pub.dev/packages/material_ui) package. On Flutter 3.47 or later, add it with
+`flutter pub add material_ui` and import `package:material_ui/material_ui.dart` instead.
+
 ### Rebuilding less often
 
 Use `buildWhen` to only rebuild for the updates you care about:

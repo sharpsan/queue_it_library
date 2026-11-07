@@ -1,5 +1,8 @@
 import 'dart:async';
 
+// The SnackBar tests need Material. flutter_queue_it supports Flutter
+// versions from before the material_ui package, so they use the framework's.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:flutter_test/flutter_test.dart';

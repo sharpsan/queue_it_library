@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_queue_it_example/main.dart' as example;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A 1x1 PNG.
 final _png = base64Decode(
@@ -19,18 +19,18 @@ class _Server {
   var downloads = 0;
 
   MockClient get client => MockClient((request) async {
-        _failing ??= request.url;
-        if (request.url == _failing) return http.Response('', 500);
-        downloads++;
-        return http.Response.bytes(_png, 200);
-      });
+    _failing ??= request.url;
+    if (request.url == _failing) return http.Response('', 500);
+    downloads++;
+    return http.Response.bytes(_png, 200);
+  });
 }
 
 /// The subtitle of each image in the list.
 List<String> _subtitles(WidgetTester tester) => [
-      for (final tile in tester.widgetList<ListTile>(find.byType(ListTile)))
-        (tile.subtitle! as Text).data!,
-    ];
+  for (final tile in tester.widgetList<ListTile>(find.byType(ListTile)))
+    (tile.subtitle! as Text).data!,
+];
 
 bool _isFinished(String subtitle) =>
     subtitle.startsWith('Downloaded in') || subtitle.startsWith('Failed: ');
@@ -48,8 +48,9 @@ Future<Set<String>> _pumpUntilFinished(WidgetTester tester) async {
       subtitles.where((subtitle) => subtitle.startsWith('Downloading')).length,
       lessThanOrEqualTo(3),
     );
-    if (subtitles
-        .every((subtitle) => _isFinished(subtitle) || subtitle == 'Canceled')) {
+    if (subtitles.every(
+      (subtitle) => _isFinished(subtitle) || subtitle == 'Canceled',
+    )) {
       return seen;
     }
   }
@@ -176,11 +177,13 @@ void main() {
       expect(find.byTooltip('Cancel'), findsNWidgets(3));
 
       // Swipe the second image away.
-      final removed = (tester
-              .widgetList<ListTile>(find.byType(ListTile))
-              .elementAt(1)
-              .title! as Text)
-          .data!;
+      final removed =
+          (tester
+                      .widgetList<ListTile>(find.byType(ListTile))
+                      .elementAt(1)
+                      .title!
+                  as Text)
+              .data!;
       await tester.drag(find.byType(Dismissible).at(1), const Offset(-800, 0));
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
@@ -209,8 +212,10 @@ void main() {
         find.byType(ListTile).first,
         find.byType(ListTile).last,
       ]) {
-        expect(find.descendant(of: tile, matching: find.byType(Image)),
-            findsNothing);
+        expect(
+          find.descendant(of: tile, matching: find.byType(Image)),
+          findsNothing,
+        );
       }
       await tester.tap(find.byTooltip('Stop the queue'));
       await tester.pump();

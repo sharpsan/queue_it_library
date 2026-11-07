@@ -17,7 +17,7 @@ Please check out each project for more details and examples.
 ## Development
 
 The repository is a [pub workspace](https://dart.dev/tools/pub/workspaces) managed with melos. It
-needs Dart 3.9 or later, which means a current Flutter stable.
+needs Flutter 3.47 or later: melos needs Dart 3.9, and the Flutter example uses `material_ui`.
 
 ```sh
 flutter pub get         # resolves both packages and both examples

@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:http/http.dart' as http;
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   runApp(const MaterialApp(home: ImageQueuePage()));
@@ -91,9 +91,9 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
         item.retryCount < _queue.retries) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item.id} failed: ${item.error}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${item.id} failed: ${item.error}')));
   }
 
   @override
@@ -188,7 +188,8 @@ class _ImageQueuePageState extends State<ImageQueuePage> {
 
   Widget _buildItem(QueueItem<String> item) {
     final image = _images[item.id];
-    final active = item.status == QueueItemStatus.pending ||
+    final active =
+        item.status == QueueItemStatus.pending ||
         item.status == QueueItemStatus.processing;
     return Dismissible(
       key: ValueKey(item.id),
