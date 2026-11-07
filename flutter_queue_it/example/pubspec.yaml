@@ -1,5 +1,5 @@
 name: flutter_queue_it_example
-description: "An image downloader that shows QueueItWidget and QueueItListener at work."
+description: "A photo uploader that shows QueueItWidget and QueueItListener at work."
 publish_to: "none"
 
 version: 1.0.0+1
@@ -14,7 +14,6 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_queue_it: ^1.0.0
-  http: ^1.6.0
   material_ui: ^1.10.0
 dev_dependencies:
   flutter_test:

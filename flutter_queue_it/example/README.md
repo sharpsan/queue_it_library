@@ -1,18 +1,19 @@
 # flutter_queue_it example
 
-An image downloader built with `QueueItWidget` and `QueueItListener`. It downloads random images
-from [Lorem Picsum](https://picsum.photos), three at a time.
+A photo uploader built with `QueueItWidget` and `QueueItListener`. It uploads three photos at a
+time and shows how each one is going.
 
-To show off retries, about a third of the downloads fail on purpose. A failed download is retried
-twice, after waiting 1 and then 2 seconds, and you get a message if it still fails.
+The uploads are simulated, so the example runs without a server, and about a third of them fail on
+purpose to show off retries. A failed upload is retried twice, after waiting 1 and then 2 seconds,
+and you get a message if it still fails. The photos come from [Lorem Picsum](https://picsum.photos).
 
 You can:
 
-- Add five images at a time.
-- Start and stop the queue.
-- Cancel a waiting or downloading image by tapping its cross.
-- Swipe an image away to remove it from the queue.
-- Remove all the finished images.
+- Add six photos at a time.
+- Pause and resume the uploads.
+- Cancel a photo by tapping its cross, and try a failed or canceled one again.
+- Swipe a photo away to remove it.
+- Clear the finished photos.
 
 ### Running the example
 
