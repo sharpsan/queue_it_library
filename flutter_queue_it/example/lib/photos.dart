@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
@@ -40,21 +41,39 @@ Photo _samplePhoto(int index) => Photo(
 );
 
 /// Pretends to upload [photo] at about 1.5 MB/s, so the example runs without a
-/// server. Reports how much has been sent, from 0 to 1. About a third of the
-/// attempts fail partway, to show off retries.
+/// server. Reports how much has been sent, from 0 to 1, and stops when its
+/// subscription is canceled. About a third of the attempts fail partway, to
+/// show off retries.
 ///
-/// Swap in your own upload, for example with dio's `onSendProgress`.
-Stream<double> fakeUpload(Photo photo) async* {
+/// Swap in your own upload, for example with dio's `onSendProgress`, and a
+/// `CancelToken` to stop it.
+Stream<double> fakeUpload(Photo photo) {
   final failAt = _random.nextDouble() < 0.3
       ? 0.2 + _random.nextDouble() * 0.6
       : null;
   final bytesPerTick = 75000 * (0.6 + _random.nextDouble() * 0.8);
-  for (var sent = 0.0; sent < photo.size;) {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    sent = math.min(sent + bytesPerTick, photo.size.toDouble());
-    if (failAt != null && sent >= photo.size * failAt) {
-      throw const UploadException('Connection lost');
-    }
-    yield sent / photo.size;
-  }
+  var sent = 0.0;
+  Timer? timer;
+  late final StreamController<double> controller;
+  controller = StreamController(
+    onListen: () {
+      timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        sent = math.min(sent + bytesPerTick, photo.size.toDouble());
+        if (failAt != null && sent >= photo.size * failAt) {
+          timer!.cancel();
+          controller
+            ..addError(const UploadException('Connection lost'))
+            ..close();
+        } else {
+          controller.add(sent / photo.size);
+          if (sent == photo.size) {
+            timer!.cancel();
+            controller.close();
+          }
+        }
+      });
+    },
+    onCancel: () => timer?.cancel(),
+  );
+  return controller.stream;
 }

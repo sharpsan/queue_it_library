@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/semantics.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -8,6 +11,10 @@ void main() {
     MaterialApp(
       title: 'Upload photos',
       theme: ThemeData(colorSchemeSeed: Colors.indigo),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
       home: const UploadsPage(pickPhotos: pickSamplePhotos, upload: fakeUpload),
     ),
   );
@@ -26,12 +33,27 @@ class UploadsPage extends StatefulWidget {
   /// Picks the photos to upload.
   final Future<List<Photo>> Function() pickPhotos;
 
-  /// Uploads a photo, reporting how much has been sent, from 0 to 1.
+  /// Uploads a photo, reporting how much has been sent, from 0 to 1. Canceling
+  /// the stream's subscription should stop the upload.
   final Stream<double> Function(Photo photo) upload;
 
   @override
   State<UploadsPage> createState() => _UploadsPageState();
 }
+
+/// A photo's row in the list. Retrying a photo adds it to the queue again as
+/// a new item, so the row keeps the id of the latest one.
+class _Row {
+  _Row(this.photo, this.itemId);
+
+  final Photo photo;
+  String itemId;
+}
+
+typedef _Upload = ({
+  StreamSubscription<double> subscription,
+  Completer<void> done,
+});
 
 class _UploadsPageState extends State<UploadsPage> {
   late final _queue = QueueIt<Photo>(
@@ -41,12 +63,24 @@ class _UploadsPageState extends State<UploadsPage> {
     itemHandler: _upload,
   );
 
-  /// How much of each photo's current attempt has been sent, by item id. The
-  /// queue only knows the item's status.
+  /// The page's own ScaffoldMessenger, so its SnackBars go when it does.
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+
+  /// The item whose failure the SnackBar is showing.
+  String? _failureShown;
+
+  /// The rows, in the order they're shown.
+  final _rows = <_Row>[];
+
+  /// The rows added since the last frame, which slide in.
+  final _newRows = <_Row>{};
+
+  /// How much of each upload has been sent, by item id. The queue only knows
+  /// the item's status.
   final _progress = <String, ValueNotifier<double>>{};
 
-  /// The photos already shown, so only new ones animate in.
-  final _shown = <String>{};
+  /// The uploads in progress, by item id.
+  final _uploads = <String, _Upload>{};
 
   @override
   void initState() {
@@ -57,52 +91,118 @@ class _UploadsPageState extends State<UploadsPage> {
 
   @override
   void dispose() {
+    for (final id in _uploads.keys.toList()) {
+      _stopUpload(id);
+    }
     _queue.dispose();
+    for (final progress in _progress.values) {
+      progress.dispose();
+    }
     super.dispose();
   }
 
-  ValueNotifier<double> _progressOf(QueueItem<Photo> item) =>
-      _progress.putIfAbsent(item.id, () => ValueNotifier(0));
+  ValueNotifier<double> _progressOf(String id) =>
+      _progress.putIfAbsent(id, () => ValueNotifier(0));
 
   Future<void> _upload(QueueItem<Photo> item) async {
-    final progress = _progressOf(item)..value = 0;
-    await for (final sent in widget.upload(item.data)) {
-      // The queue doesn't stop a handler when its photo is canceled or
-      // removed, so stop the upload here.
-      if (item.status != QueueItemStatus.processing) return;
-      progress.value = sent;
+    final progress = _progressOf(item.id)..value = 0;
+    final done = Completer<void>();
+    _uploads[item.id] = (
+      subscription: widget
+          .upload(item.data)
+          .listen(
+            (sent) => progress.value = sent,
+            onError: (Object error, StackTrace stackTrace) {
+              if (!done.isCompleted) done.completeError(error, stackTrace);
+            },
+            onDone: () {
+              if (!done.isCompleted) done.complete();
+            },
+            cancelOnError: true,
+          ),
+      done: done,
+    );
+    try {
+      // Throwing here, when the upload fails, makes the queue retry it.
+      await done.future;
+    } finally {
+      _uploads.remove(item.id);
     }
+  }
+
+  /// Stops an upload in progress. The queue doesn't stop a handler when its
+  /// item is canceled or removed, so this stops the upload and lets the
+  /// handler return, which frees its place for the next photo.
+  void _stopUpload(String id) {
+    final upload = _uploads.remove(id);
+    if (upload == null) return;
+    // How a stopped upload ends doesn't matter any more.
+    upload.subscription.cancel().ignore();
+    if (!upload.done.isCompleted) upload.done.complete();
+  }
+
+  _Row? _rowOf(String id) {
+    for (final row in _rows) {
+      if (row.itemId == id) return row;
+    }
+    return null;
+  }
+
+  QueueItemStatus? _statusOf(_Row row) {
+    for (final item in _queue.items()) {
+      if (item.id == row.itemId) return item.status;
+    }
+    return null;
   }
 
   Future<void> _addPhotos() async {
     final photos = await widget.pickPhotos();
     if (!mounted) return;
     for (final photo in photos) {
-      _queue.add(photo);
+      final row = _Row(photo, _queue.add(photo));
+      _rows.add(row);
+      _newRows.add(row);
     }
+    // Only the rows shown in the next frame slide in, not the ones scrolled to
+    // later.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _newRows.clear());
   }
 
-  void _remove(QueueItem<Photo> item) {
-    _queue.remove(item);
-    _progress.remove(item.id);
+  // The actions take a row rather than an item, since a row's item changes
+  // when it's retried.
+
+  void _cancel(_Row row) {
+    _queue.cancelById(row.itemId);
+    _stopUpload(row.itemId);
   }
 
-  /// Adds the photo again, at the end of the list.
-  void _retry(QueueItem<Photo> item) {
-    // Already retried or removed, for example from its SnackBar.
-    if (!_queue.remove(item)) return;
-    _progress.remove(item.id);
-    _queue.add(item.data);
+  void _remove(_Row row) {
+    _queue.removeById(row.itemId);
+    _stopUpload(row.itemId);
+    _hideFailure(row.itemId);
+    _rows.remove(row);
+    _progress.remove(row.itemId)?.dispose();
+  }
+
+  /// Adds a failed or canceled photo to the queue again, in the same row.
+  void _retry(_Row row) {
+    // Not if it's already been retried or removed, for example from its
+    // SnackBar.
+    final status = _statusOf(row);
+    if (!mounted ||
+        (status != QueueItemStatus.failed &&
+            status != QueueItemStatus.canceled)) {
+      return;
+    }
+    _queue.removeById(row.itemId);
+    _hideFailure(row.itemId);
+    _progress.remove(row.itemId)?.dispose();
+    row.itemId = _queue.add(row.photo);
   }
 
   void _clearFinished() {
-    for (final item in _queue.items().toList()) {
-      if (item.status
-          case QueueItemStatus.completed ||
-              QueueItemStatus.failed ||
-              QueueItemStatus.canceled) {
-        _remove(item);
-      }
+    for (final item in _queue.items().where(_isFinished).toList()) {
+      if (_rowOf(item.id) case final row?) _remove(row);
     }
   }
 
@@ -115,105 +215,153 @@ class _UploadsPageState extends State<UploadsPage> {
         item.retryCount < _queue.retries) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("${item.data.name} couldn't be uploaded"),
-        action: SnackBarAction(label: 'Retry', onPressed: () => _retry(item)),
-      ),
-    );
+    _failureShown = item.id;
+    ScaffoldMessenger.of(context)
+      // Show the latest failure right away. Each photo's row can retry it too.
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text("${item.data.name} couldn't be uploaded"),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () {
+              // The SnackBar hides itself.
+              _failureShown = null;
+              if (_rowOf(item.id) case final row?) _retry(row);
+            },
+          ),
+          // Go after a few seconds, even though there's an action.
+          persist: false,
+        ),
+      );
+  }
+
+  /// Hides the SnackBar if it's about [itemId], which was retried or removed.
+  void _hideFailure(String itemId) {
+    if (_failureShown != itemId) return;
+    _failureShown = null;
+    _messenger.currentState?.hideCurrentSnackBar();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Upload photos'),
-        actions: [
-          // Only starting and stopping the queue changes this button.
-          QueueItWidget<Photo>(
-            queue: _queue,
-            buildWhen: (snapshot) =>
-                snapshot.event == QueueEvent.startedQueue ||
-                snapshot.event == QueueEvent.stoppedQueue,
-            builder: (context, snapshot) => _queue.isStarted
-                ? IconButton(
-                    onPressed: _queue.stop,
-                    tooltip: 'Pause uploads',
-                    icon: const Icon(Icons.pause),
-                  )
-                : IconButton(
-                    onPressed: () => _queue.start(stopAutomatically: false),
-                    tooltip: 'Resume uploads',
-                    icon: const Icon(Icons.play_arrow),
-                  ),
-          ),
-          IconButton(
-            onPressed: _clearFinished,
-            tooltip: 'Clear finished',
-            icon: const Icon(Icons.clear_all),
-          ),
-        ],
-      ),
-      body: QueueItListener<Photo>(
-        queue: _queue,
-        listener: _showFailure,
-        child: QueueItWidget<Photo>(
-          queue: _queue,
-          builder: (context, snapshot) {
-            final items = _queue.items().toList();
-            return AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: items.isEmpty
-                  ? const _EmptyState()
-                  : Column(
-                      key: const ValueKey('uploads'),
-                      children: [
-                        _Summary(
-                          items: items,
-                          isStarted: _queue.isStarted,
-                          progressOf: _progressOf,
-                        ),
-                        Expanded(child: _buildList(items)),
-                      ],
+    return ScaffoldMessenger(
+      key: _messenger,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Upload photos'),
+          actions: [
+            // Only starting and stopping the queue changes this button.
+            QueueItWidget<Photo>(
+              queue: _queue,
+              buildWhen: (snapshot) =>
+                  snapshot.event == QueueEvent.startedQueue ||
+                  snapshot.event == QueueEvent.stoppedQueue,
+              builder: (context, snapshot) => _queue.isStarted
+                  ? IconButton(
+                      onPressed: _queue.stop,
+                      tooltip: 'Pause uploads',
+                      icon: const Icon(Icons.pause),
+                    )
+                  : IconButton(
+                      onPressed: () => _queue.start(stopAutomatically: false),
+                      tooltip: 'Resume uploads',
+                      icon: const Icon(Icons.play_arrow),
                     ),
-            );
-          },
+            ),
+            QueueItWidget<Photo>(
+              queue: _queue,
+              builder: (context, snapshot) => IconButton(
+                onPressed: _queue.items().any(_isFinished)
+                    ? _clearFinished
+                    : null,
+                tooltip: 'Clear finished',
+                icon: const Icon(Icons.clear_all),
+              ),
+            ),
+          ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addPhotos,
-        tooltip: 'Add photos',
-        icon: const Icon(Icons.add_photo_alternate_outlined),
-        label: const Text('Add photos'),
+        body: QueueItListener<Photo>(
+          queue: _queue,
+          listener: _showFailure,
+          child: QueueItWidget<Photo>(
+            queue: _queue,
+            builder: (context, snapshot) {
+              final items = {for (final item in _queue.items()) item.id: item};
+              final rows = [
+                for (final row in _rows)
+                  if (items[row.itemId] case final item?)
+                    (row: row, item: item),
+              ];
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                // Fade the empty screen out before the list fades in.
+                switchInCurve: _fadeIn,
+                switchOutCurve: _fadeOut,
+                child: rows.isEmpty
+                    ? const _EmptyState()
+                    : Column(
+                        key: const ValueKey('uploads'),
+                        children: [
+                          _Summary(
+                            items: [for (final (:item, row: _) in rows) item],
+                            isStarted: _queue.isStarted,
+                            progressOf: _progressOf,
+                          ),
+                          Expanded(child: _buildList(rows)),
+                        ],
+                      ),
+              );
+            },
+          ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _addPhotos,
+          tooltip: 'Add photos',
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label: const Text('Add photos'),
+        ),
       ),
     );
   }
 
-  Widget _buildList(List<QueueItem<Photo>> items) {
+  Widget _buildList(List<({_Row row, QueueItem<Photo> item})> rows) {
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 96),
-      itemCount: items.length,
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        final item = items[index];
+        final (:row, :item) = rows[index];
         return _PhotoTile(
-          key: ValueKey(item.id),
+          key: ObjectKey(row),
           item: item,
-          progress: _progressOf(item),
-          animateIn: _shown.add(item.id),
-          onCancel: () => _queue.cancel(item),
-          onRetry: () => _retry(item),
-          onRemove: () => _remove(item),
+          progress: _progressOf(item.id),
+          slideIn: _newRows.contains(row),
+          onCancel: () => _cancel(row),
+          onRetry: () => _retry(row),
+          onRemove: () => _remove(row),
         );
       },
-      // Match the tiles to their photos, so the ones below a removed photo
-      // keep their state, like a swipe in progress.
+      // Match the tiles to their rows, so the ones below a removed photo keep
+      // their state, like a swipe in progress.
       findChildIndexCallback: (key) {
-        final index = items.indexWhere((item) => ValueKey(item.id) == key);
+        final index = rows.indexWhere((entry) => ObjectKey(entry.row) == key);
         return index < 0 ? null : index;
       },
     );
   }
 }
+
+// For AnimatedSwitcher: the old child fades out before the new one fades in,
+// so they don't overlap.
+const _fadeIn = Interval(0.5, 1, curve: Curves.easeOut);
+const _fadeOut = Interval(0.5, 1, curve: Curves.easeIn);
+
+bool _isFinished(QueueItem<Photo> item) => switch (item.status) {
+  QueueItemStatus.completed ||
+  QueueItemStatus.failed ||
+  QueueItemStatus.canceled => true,
+  _ => false,
+};
 
 /// How the uploads are going: what's happening, how many are done, and a
 /// progress bar that moves with each photo.
@@ -226,7 +374,7 @@ class _Summary extends StatelessWidget {
 
   final List<QueueItem<Photo>> items;
   final bool isStarted;
-  final ValueNotifier<double> Function(QueueItem<Photo> item) progressOf;
+  final ValueNotifier<double> Function(String id) progressOf;
 
   @override
   Widget build(BuildContext context) {
@@ -236,28 +384,36 @@ class _Summary extends StatelessWidget {
     final active = uploading.length + items.pending.length;
     final uploaded = items.completed.length;
     final failed = items.failed.length;
+    final canceled = items.canceled.length;
 
-    final (icon, color, title) = switch ((active, isStarted, failed)) {
-      (> 0, true, _) => (
+    final (icon, color, title) = switch (active) {
+      > 0 when isStarted => (
         Icons.cloud_upload_outlined,
         colors.primary,
         'Uploading photos',
       ),
-      (> 0, false, _) => (
+      > 0 when uploading.isNotEmpty => (
         Icons.pause_circle_outline,
         colors.onSurfaceVariant,
-        'Paused',
+        'Pausing…',
       ),
-      (_, _, 0) => (
+      > 0 => (Icons.pause_circle_outline, colors.onSurfaceVariant, 'Paused'),
+      _ when uploaded == items.length => (
         Icons.cloud_done_outlined,
         colors.primary,
-        'Uploads finished',
+        'All photos uploaded',
       ),
-      _ => (Icons.error_outline, colors.error, 'Some photos failed'),
+      _ when failed > 0 => (
+        Icons.error_outline,
+        colors.error,
+        'Some photos failed',
+      ),
+      _ => (Icons.cloud_outlined, colors.onSurfaceVariant, 'Uploads finished'),
     };
     final detail = [
       '$uploaded of ${items.length} uploaded',
       if (failed > 0) '$failed failed',
+      if (canceled > 0) '$canceled canceled',
     ].join(' · ');
 
     return Card.filled(
@@ -271,6 +427,8 @@ class _Summary extends StatelessWidget {
               children: [
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
+                  switchInCurve: _fadeIn,
+                  switchOutCurve: _fadeOut,
                   child: Icon(icon, key: ValueKey(icon), color: color),
                 ),
                 const SizedBox(width: 12),
@@ -281,6 +439,8 @@ class _Summary extends StatelessWidget {
                       Text(title, style: text.titleMedium),
                       Text(
                         detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: text.bodyMedium?.copyWith(
                           color: colors.onSurfaceVariant,
                         ),
@@ -290,31 +450,22 @@ class _Summary extends StatelessWidget {
                 ),
               ],
             ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              child: active == 0
-                  ? const SizedBox(width: double.infinity)
-                  : Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      // Count the photos being uploaded by how much of them
-                      // has been sent, so the bar moves smoothly.
-                      child: ListenableBuilder(
-                        listenable: Listenable.merge([
-                          for (final item in uploading) progressOf(item),
-                        ]),
-                        builder: (context, _) {
-                          final finished = items.length - active;
-                          final sending = uploading.fold(
-                            0.0,
-                            (sum, item) => sum + progressOf(item).value,
-                          );
-                          return _Bar(
-                            value: (finished + sending) / items.length,
-                          );
-                        },
-                      ),
-                    ),
+            const SizedBox(height: 12),
+            // Count the photos being uploaded by how much of them has been
+            // sent, so the bar moves smoothly.
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                for (final item in uploading) progressOf(item.id),
+              ]),
+              builder: (context, _) {
+                final sending = uploading.fold(
+                  0.0,
+                  (sum, item) => sum + progressOf(item.id).value,
+                );
+                return _Bar(
+                  value: (items.length - active + sending) / items.length,
+                );
+              },
             ),
           ],
         ),
@@ -327,10 +478,10 @@ class _Summary extends StatelessWidget {
 /// to remove it.
 class _PhotoTile extends StatelessWidget {
   const _PhotoTile({
-    super.key,
+    required super.key,
     required this.item,
     required this.progress,
-    required this.animateIn,
+    required this.slideIn,
     required this.onCancel,
     required this.onRetry,
     required this.onRemove,
@@ -338,7 +489,7 @@ class _PhotoTile extends StatelessWidget {
 
   final QueueItem<Photo> item;
   final ValueNotifier<double> progress;
-  final bool animateIn;
+  final bool slideIn;
   final VoidCallback onCancel;
   final VoidCallback onRetry;
   final VoidCallback onRemove;
@@ -346,22 +497,15 @@ class _PhotoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final tile = ListTile(
-      leading: _Thumbnail(image: item.data.image),
-      title: Text(item.data.name),
-      subtitle: _buildStatus(context),
-      trailing: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        transitionBuilder: (child, animation) => ScaleTransition(
-          scale: animation,
-          child: FadeTransition(opacity: animation, child: child),
-        ),
-        child: _buildAction(colors),
-      ),
-    );
     return Dismissible(
-      key: ValueKey(item.id),
+      key: key!,
       direction: DismissDirection.endToStart,
+      // Stop the upload as soon as the photo is swiped away, rather than once
+      // the row has gone.
+      confirmDismiss: (direction) async {
+        onCancel();
+        return true;
+      },
       onDismissed: (direction) => onRemove(),
       background: ColoredBox(
         color: colors.errorContainer,
@@ -373,64 +517,111 @@ class _PhotoTile extends StatelessWidget {
           ),
         ),
       ),
-      child: animateIn ? _AnimateIn(child: tile) : tile,
+      child: _AnimateIn(
+        animate: slideIn,
+        // Lets screen readers remove a photo, since they can't swipe.
+        child: Semantics(
+          container: true,
+          customSemanticsActions: {
+            const CustomSemanticsAction(label: 'Remove'): onRemove,
+          },
+          child: ListTile(
+            leading: _Thumbnail(image: item.data.image),
+            title: Text(
+              item.data.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: _buildStatus(context),
+            trailing: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: _fadeIn,
+              switchOutCurve: _fadeOut,
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: animation,
+                child: FadeTransition(
+                  opacity: animation,
+                  child: _TappableWhenSettled(
+                    animation: animation,
+                    child: child,
+                  ),
+                ),
+              ),
+              child: _buildAction(colors),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildStatus(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final style = Theme.of(context).textTheme.bodyMedium;
     final size = _megabytes(item.data.size);
     final retry = item.retryCount;
-    final Widget status = switch (item.status) {
-      QueueItemStatus.pending when retry > 0 => Text(
+    final (String status, Color? color) = switch (item.status) {
+      QueueItemStatus.pending when retry > 0 => (
         'Upload failed, retrying',
-        style: style?.copyWith(color: colors.tertiary),
+        colors.tertiary,
       ),
-      QueueItemStatus.pending => Text('Waiting · $size MB'),
-      QueueItemStatus.processing => ValueListenableBuilder(
-        valueListenable: progress,
-        builder: (context, sent, _) => Text(
-          '${retry > 0 ? 'Retry $retry · ' : ''}'
-          '${_megabytes(item.data.size * sent)} of $size MB',
-        ),
+      QueueItemStatus.pending => ('Waiting · $size MB', null),
+      QueueItemStatus.processing => ('', null),
+      QueueItemStatus.completed => ('Uploaded · $size MB', null),
+      QueueItemStatus.failed => (
+        // Show the error only when it's one of ours, with a short message.
+        item.error is UploadException
+            ? "Couldn't upload: ${item.error}"
+            : "Couldn't upload",
+        colors.error,
       ),
-      QueueItemStatus.completed => Text('Uploaded · $size MB'),
-      QueueItemStatus.failed => Text(
-        "Couldn't upload: ${item.error}",
-        style: style?.copyWith(color: colors.error),
-      ),
-      QueueItemStatus.canceled => const Text('Canceled'),
-      QueueItemStatus.removed => const Text('Removed'),
+      QueueItemStatus.canceled => ('Canceled', null),
+      QueueItemStatus.removed => ('Removed', null),
     };
+    Widget line(String text) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: color == null ? null : TextStyle(color: color),
+    );
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: _fadeIn,
+      switchOutCurve: _fadeOut,
       layoutBuilder: (current, previous) => Stack(
         alignment: Alignment.topLeft,
         children: [...previous, ?current],
       ),
-      child: KeyedSubtree(key: ValueKey((item.status, retry)), child: status),
+      child: KeyedSubtree(
+        key: ValueKey((item.id, item.status)),
+        child: item.status == QueueItemStatus.processing
+            ? ValueListenableBuilder(
+                valueListenable: progress,
+                builder: (context, sent, _) => line(
+                  '${retry > 0 ? 'Retry $retry · ' : ''}'
+                  '${_megabytes(item.data.size * sent)} of $size MB',
+                ),
+              )
+            : line(status),
+      ),
     );
   }
 
   Widget _buildAction(ColorScheme colors) {
     switch (item.status) {
-      case QueueItemStatus.pending:
-        return IconButton(
-          key: const ValueKey('waiting'),
-          onPressed: onCancel,
-          tooltip: 'Cancel',
-          icon: const Icon(Icons.close),
-        );
-      case QueueItemStatus.processing:
-        // The cross, with a ring around it for how much has been sent.
+      case QueueItemStatus.pending || QueueItemStatus.processing:
+        // The same button while the photo waits and uploads, so it can always
+        // be tapped, with a ring around it for how much has been sent.
         return Stack(
-          key: const ValueKey('uploading'),
+          key: const ValueKey('cancel'),
           alignment: Alignment.center,
           children: [
-            ValueListenableBuilder(
-              valueListenable: progress,
-              builder: (context, sent, _) => _Ring(value: sent),
+            AnimatedOpacity(
+              opacity: item.status == QueueItemStatus.processing ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: ValueListenableBuilder(
+                valueListenable: progress,
+                builder: (context, sent, _) => _Ring(value: sent),
+              ),
             ),
             IconButton(
               onPressed: onCancel,
@@ -453,12 +644,31 @@ class _PhotoTile extends StatelessWidget {
           icon: const Icon(Icons.refresh),
         );
       case QueueItemStatus.removed:
-        return const SizedBox.shrink();
+        return const SizedBox.shrink(key: ValueKey('removed'));
     }
   }
 }
 
 String _megabytes(num bytes) => (bytes / 1000000).toStringAsFixed(1);
+
+/// Lets [child] take taps only once [animation] has finished, so a quick
+/// second tap doesn't land on the button that's replacing it.
+class _TappableWhenSettled extends StatelessWidget {
+  const _TappableWhenSettled({required this.animation, required this.child});
+
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) =>
+          IgnorePointer(ignoring: !animation.isCompleted, child: child),
+      child: child,
+    );
+  }
+}
 
 /// A rounded progress bar that moves smoothly between values.
 class _Bar extends StatelessWidget {
@@ -539,10 +749,13 @@ class _Thumbnail extends StatelessWidget {
   }
 }
 
-/// Slides and fades a new photo in.
+/// Slides and fades a new photo in. The rows are always wrapped in this, so
+/// that rebuilding one keeps its state.
 class _AnimateIn extends StatefulWidget {
-  const _AnimateIn({required this.child});
+  const _AnimateIn({required this.animate, required this.child});
 
+  /// Whether to slide in, rather than appear in place. Only read once.
+  final bool animate;
   final Widget child;
 
   @override
@@ -554,11 +767,16 @@ class _AnimateInState extends State<_AnimateIn>
   late final _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 350),
+    value: widget.animate ? 0 : 1,
   )..forward();
   late final _curve = CurvedAnimation(
     parent: _controller,
     curve: Curves.easeOutCubic,
   );
+  late final _offset = Tween(
+    begin: const Offset(0, 0.3),
+    end: Offset.zero,
+  ).animate(_curve);
 
   @override
   void dispose() {
@@ -571,13 +789,7 @@ class _AnimateInState extends State<_AnimateIn>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _curve,
-      child: SlideTransition(
-        position: Tween(
-          begin: const Offset(0, 0.3),
-          end: Offset.zero,
-        ).animate(_curve),
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _offset, child: widget.child),
     );
   }
 }
@@ -591,7 +803,6 @@ class _EmptyState extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     return Center(
-      key: const ValueKey('empty'),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -601,6 +812,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             'Add photos to upload them, three at a time.',
+            textAlign: TextAlign.center,
             style: text.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
         ],
