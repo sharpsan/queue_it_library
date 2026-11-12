@@ -59,7 +59,7 @@ class _UploadsPageState extends State<UploadsPage> {
   late final _queue = QueueIt<Photo>(
     parallel: 3,
     retries: 2,
-    retryDelay: (retry) => Duration(seconds: retry),
+    retryDelay: (item, retry) => Duration(seconds: retry),
     itemHandler: _upload,
   );
 

@@ -84,7 +84,7 @@ void main() {
     final gate = Gate<int>();
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => const Duration(milliseconds: 20),
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
       itemHandler: (item) {
         processed.add('${item.data}.${item.retryCount}');
         if (item.data == 3) return gate(item);
@@ -147,7 +147,7 @@ void main() {
     final attempts = <int>[];
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => const Duration(milliseconds: 20),
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
       itemHandler: (item) {
         attempts.add(item.data);
         if (item.retryCount == 0) throw Exception('failed');
@@ -185,7 +185,7 @@ void main() {
     final errors = <Object>[];
     final queue = QueueIt<int>(
       retries: 3,
-      retryIf: (error) {
+      retryIf: (item, error) {
         errors.add(error);
         return error is! ArgumentError;
       },
@@ -205,13 +205,35 @@ void main() {
     expect(errors, hasLength(4));
   });
 
+  test('retryIf gets the item that failed', () async {
+    final asked = <String>[];
+    final queue = QueueIt<int>(
+      retries: 1,
+      // Only odd items get another try.
+      retryIf: (item, error) {
+        asked.add('${item.data}:${item.status.name}:${item.retryCount}');
+        return item.data.isOdd;
+      },
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+    await queue.running;
+
+    expect(asked, ['1:processing:0', '2:processing:0']);
+    expect(queue.items().map((item) => item.retryCount), [1, 0]);
+  });
+
   test(
       'completes waitFor on the failure that is not retried, with retries left',
       () async {
     final failedWith = <int>[];
     final queue = QueueIt<String>(
       retries: 2,
-      retryIf: (error) => error is! FormatException,
+      retryIf: (item, error) => error is! FormatException,
       itemHandler: (item) => throw item.retryCount == 0
           ? StateError('busy')
           : const FormatException('bad file'),
@@ -236,12 +258,31 @@ void main() {
   });
 
   group('retryDelay', () {
+    test('gets the item and the number of the retry', () async {
+      final asked = <String>[];
+      final queue = QueueIt<int>(
+        retries: 2,
+        retryDelay: (item, retry) {
+          asked.add('${item.data}:${item.retryCount}:$retry');
+          return Duration.zero;
+        },
+        itemHandler: (item) => throw Exception('failed'),
+      );
+      addTearDown(queue.dispose);
+      queue
+        ..add(7)
+        ..start();
+      await queue.running;
+
+      expect(asked, ['7:0:1', '7:1:2']);
+    });
+
     test('waits before each retry', () async {
       final retries = <int>[];
       final attempts = <DateTime>[];
       final queue = QueueIt<int>(
         retries: 2,
-        retryDelay: (retry) {
+        retryDelay: (item, retry) {
           retries.add(retry);
           return Duration(milliseconds: 20 * retry);
         },
@@ -269,7 +310,7 @@ void main() {
       final processed = <String>[];
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(milliseconds: 30),
+        retryDelay: (item, retry) => const Duration(milliseconds: 30),
         itemHandler: (item) {
           processed.add('${item.data}.${item.retryCount}');
           if (item.data == 1 && item.retryCount == 0) {
@@ -298,7 +339,7 @@ void main() {
       var attempts = 0;
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(milliseconds: 20),
+        retryDelay: (item, retry) => const Duration(milliseconds: 20),
         itemHandler: (item) {
           attempts++;
           throw Exception('failed');
@@ -321,7 +362,7 @@ void main() {
       var attempts = 0;
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(hours: 1),
+        retryDelay: (item, retry) => const Duration(hours: 1),
         itemHandler: (item) {
           attempts++;
           throw Exception('failed');
@@ -458,10 +499,10 @@ void main() {
         final queue = QueueIt<int>(
           retries: 1,
           retryIf: callback == 'retryIf'
-              ? (error) => throw StateError(callback)
+              ? (item, error) => throw StateError(callback)
               : null,
           retryDelay: callback == 'retryDelay'
-              ? (retry) => throw StateError(callback)
+              ? (item, retry) => throw StateError(callback)
               : null,
           itemHandler: (item) => throw Exception('failed'),
         );
@@ -486,7 +527,7 @@ void main() {
         () async {
           final queue = QueueIt<int>(
             retries: 1,
-            retryDelay: (retry) => const Duration(hours: 1),
+            retryDelay: (item, retry) => const Duration(hours: 1),
             itemHandler: (item) => throw Exception('failed'),
           );
           queue.onUpdate.listen((snapshot) {
@@ -521,7 +562,7 @@ void main() {
     var attempts = 0;
     QueueIt<int> failing() => QueueIt<int>(
           retries: 1,
-          retryDelay: (retry) => const Duration(milliseconds: 20),
+          retryDelay: (item, retry) => const Duration(milliseconds: 20),
           itemHandler: (item) {
             attempts++;
             throw Exception('failed');
@@ -642,13 +683,13 @@ void main() {
           queue = QueueIt<int>(
             retries: 1,
             retryIf: callback == 'retryIf'
-                ? (error) {
+                ? (item, error) {
                     call();
                     return true;
                   }
                 : null,
             retryDelay: callback == 'retryDelay'
-                ? (retry) {
+                ? (item, retry) {
                     call();
                     return Duration.zero;
                   }
@@ -681,7 +722,7 @@ void main() {
         final delays = <int>[];
         queue = QueueIt<int>(
           retries: 1,
-          retryIf: (error) {
+          retryIf: (item, error) {
             switch (action) {
               case 'cancel':
                 queue.cancelById('a');
@@ -692,7 +733,7 @@ void main() {
             }
             return true;
           },
-          retryDelay: (retry) {
+          retryDelay: (item, retry) {
             delays.add(retry);
             return Duration.zero;
           },
@@ -714,7 +755,7 @@ void main() {
       late QueueIt<int> queue;
       queue = QueueIt<int>(
         retries: 1,
-        retryIf: (error) {
+        retryIf: (item, error) {
           if (queue.items().length == 1) queue.add(2);
           return true;
         },
@@ -765,13 +806,13 @@ void main() {
         queue = QueueIt<int>(
           retries: 1,
           retryIf: callback == 'retryIf'
-              ? (error) {
+              ? (item, error) {
                   queue.dispose();
                   return true;
                 }
               : null,
           retryDelay: callback == 'retryDelay'
-              ? (retry) {
+              ? (item, retry) {
                   queue.dispose();
                   return Duration.zero;
                 }

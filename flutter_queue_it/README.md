@@ -180,7 +180,8 @@ widget is being removed, the listener isn't called any more.
 ### Migrating from 0.10
 
 - queue_it 1.0.0 makes an item's `status`, `error` and `stackTrace` read-only, renames
-  `QueueEvent.cancelledAll` to `canceledAll`, and removes the names it deprecated in 0.10.0.
+  `QueueEvent.cancelledAll` to `canceledAll`, passes the item to `retryDelay` and `retryIf`, and
+  removes the names it deprecated in 0.10.0.
   Check out the migration notes in its
   [README](https://pub.dev/packages/queue_it).
 - If you also depend on `queue_it` directly, raise it to `^1.0.0`.

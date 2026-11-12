@@ -11,6 +11,9 @@
   `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
 * BREAKING CHANGE: `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary`
   counts canceled items as `Canceled`, matching the spelling everywhere else.
+* BREAKING CHANGE: `retryDelay` and `retryIf` now get the item as their first argument, so each
+  item can have its own delay and its own say on retrying: `retryDelay: (item, retry) => ...`,
+  `retryIf: (item, error) => ...`.
 * Fix: `nextStatus` only counts when it's set while the item is processing, usually by its
   handler. The queue clears it as the item starts processing, so a value set before then no
   longer decides the attempt's outcome.

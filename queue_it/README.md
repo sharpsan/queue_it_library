@@ -150,10 +150,10 @@ final queue = QueueIt<Uri>(
 
   /// Wait 1, 2, then 4 seconds before each retry. Other items keep
   /// processing in the meantime
-  retryDelay: (retry) => Duration(seconds: 1 << (retry - 1)),
+  retryDelay: (item, retry) => Duration(seconds: 1 << (retry - 1)),
 
   /// Only retry errors that might go away
-  retryIf: (error) => error is! FormatException,
+  retryIf: (item, error) => error is! FormatException,
   itemHandler: (item) => download(item.data),
 );
 ```
@@ -258,6 +258,8 @@ For a more in-depth look at how to use QueueIt, check out the
   value set before then, for example on a pending item, is ignored.
 - `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
   instead of `Cancelled`.
+- `retryDelay` and `retryIf` now get the item first: `retryDelay: (item, retry) => ...` and
+  `retryIf: (item, error) => ...`.
 
 ## Migrating from 0.9
 

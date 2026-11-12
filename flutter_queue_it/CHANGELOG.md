@@ -3,8 +3,8 @@
 * flutter_queue_it's API is now stable: breaking changes only come with a new major version. New
   `QueueEvent`s, members and optional parameters may still come in minor versions.
 * BREAKING CHANGE: requires queue_it 1.0.0, where an item's `status`, `error` and `stackTrace` are
-  read-only, `items.cancelled` and `OnUpdateCallback` are gone, and `QueueEvent.cancelledAll` is
-  now `canceledAll`. See its changelog.
+  read-only, `items.cancelled` and `OnUpdateCallback` are gone, `QueueEvent.cancelledAll` is
+  now `canceledAll`, and `retryDelay` and `retryIf` get the item. See its changelog.
 * Fix: whatever a `QueueItListener`'s listener throws is reported to `FlutterError.onError`, like
   errors in other widgets. Before, that only happened for events sent while Flutter was building,
   and the others went to the zone. If `FlutterError.onError` throws, the listener still gets the

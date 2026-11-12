@@ -76,9 +76,9 @@ Future<void> _run(int seed) async {
     parallel: parallel,
     retries: retries,
     retryDelay: useRetryDelay
-        ? (retry) => Duration(milliseconds: random.nextInt(2))
+        ? (item, retry) => Duration(milliseconds: random.nextInt(2))
         : null,
-    retryIf: useRetryIf ? (error) => error is! _Fatal : null,
+    retryIf: useRetryIf ? (item, error) => error is! _Fatal : null,
     deepCopyItemsInSnapshot: random.nextBool(),
     itemHandler: (item) async {
       running++;

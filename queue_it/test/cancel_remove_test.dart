@@ -36,7 +36,7 @@ void main() {
   QueueIt<int> failing({Duration delay = const Duration(hours: 1)}) {
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => delay,
+      retryDelay: (item, retry) => delay,
       itemHandler: (item) => throw Exception('failed'),
     );
     addTearDown(queue.dispose);

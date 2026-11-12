@@ -226,7 +226,7 @@ void main() {
     test('keep an item that is waiting for its retry delay', () async {
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(hours: 1),
+        retryDelay: (item, retry) => const Duration(hours: 1),
         itemHandler: (item) {
           if (item.data == 1) throw Exception('failed');
         },

@@ -573,7 +573,7 @@ void main() {
       () async {
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => const Duration(milliseconds: 50),
+      retryDelay: (item, retry) => const Duration(milliseconds: 50),
       itemHandler: (item) => throw Exception('failed'),
     );
     addTearDown(queue.dispose);

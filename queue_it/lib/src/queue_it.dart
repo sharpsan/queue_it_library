@@ -131,7 +131,7 @@ class QueueIt<T> {
   /// it as failed.
   final int retries;
 
-  /// How long to wait before each retry. It's called with the
+  /// How long to wait before each retry. It's called with the item and the
   /// [QueueItem.retryCount] the item will have: 1 for the first retry, plus
   /// one for each time its handler sent it back with [QueueItem.nextStatus].
   /// Without it, failed items are retried right away.
@@ -140,21 +140,21 @@ class QueueIt<T> {
   /// [parallel] slots. For example, to double the wait each time:
   ///
   /// ```dart
-  /// retryDelay: (retry) => Duration(seconds: 1 << (retry - 1)),
+  /// retryDelay: (item, retry) => Duration(seconds: 1 << (retry - 1)),
   /// ```
   ///
   /// If it throws, the item isn't retried, and the error is reported to the
   /// current [Zone] as an uncaught error, like an error in a listener.
-  final Duration Function(int retry)? retryDelay;
+  final Duration Function(QueueItem<T> item, int retry)? retryDelay;
 
-  /// Decides whether to retry an item whose handler threw `error`. Without
+  /// Decides whether to retry `item`, whose handler threw `error`. Without
   /// it, every failure is retried while [retries] last.
   ///
   /// It isn't called once the retries are used up, or for attempts the
   /// handler failed with `nextStatus = failed`. If it throws, the item isn't
   /// retried, and the error is reported to the current [Zone] as an uncaught
   /// error, like an error in a listener.
-  final bool Function(Object error)? retryIf;
+  final bool Function(QueueItem<T> item, Object error)? retryIf;
 
   /// Whether to use readable phrases as ids instead of UUIDs.
   ///
@@ -752,12 +752,12 @@ class QueueIt<T> {
   Duration? _retryDelay(QueueItem<T> item, Object? error) {
     if (item.retryCount >= retries) return null;
     try {
-      if (error != null && !(retryIf?.call(error) ?? true)) return null;
+      if (error != null && !(retryIf?.call(item, error) ?? true)) return null;
       // retryIf canceled or removed the item, or disposed the queue.
       if (_isDisposing || item.status != QueueItemStatus.processing) {
         return null;
       }
-      return retryDelay?.call(item.retryCount + 1) ?? Duration.zero;
+      return retryDelay?.call(item, item.retryCount + 1) ?? Duration.zero;
     } catch (e, s) {
       Zone.current.handleUncaughtError(e, s);
       return null;
