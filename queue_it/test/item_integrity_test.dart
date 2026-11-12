@@ -2,6 +2,8 @@ import 'package:queue_it/src/models/queue_item.dart';
 import 'package:queue_it/src/models/queue_item_status.dart';
 import 'package:test/test.dart';
 
+import 'helpers.dart';
+
 void main() async {
   test('Item Integrity', () {
     final queueItem = QueueItem(
@@ -91,5 +93,116 @@ void main() async {
     expect(completed.failedAt, item.failedAt);
     expect(completed.error, same(error));
     expect(completed.stackTrace, same(stackTrace));
+  });
+
+  test('copyWith replaces each field it is given', () {
+    final item = QueueItem(
+      id: 'a',
+      batchId: 'batch',
+      data: 1,
+      status: QueueItemStatus.pending,
+    );
+    DateTime at(int day) => DateTime(2000, 1, day);
+
+    final copy = item.copyWith(
+      id: 'b',
+      data: 2,
+      batchId: 'other',
+      retryCount: 3,
+      queuedAt: at(1),
+      startedProcessingAt: at(2),
+      completedAt: at(3),
+      failedAt: at(4),
+      canceledAt: at(5),
+      removedAt: at(6),
+    );
+
+    expect(copy.id, 'b');
+    expect(copy.data, 2);
+    expect(copy.batchId, 'other');
+    expect(copy.retryCount, 3);
+    expect(copy.queuedAt, at(1));
+    expect(copy.startedProcessingAt, at(2));
+    expect(copy.completedAt, at(3));
+    expect(copy.failedAt, at(4));
+    expect(copy.canceledAt, at(5));
+    expect(copy.removedAt, at(6));
+    expect(copy.status, QueueItemStatus.pending);
+
+    /// And the item itself is unchanged
+    expect(item.id, 'a');
+    expect(item.data, 1);
+    expect(item.retryCount, 0);
+    expect(item.startedProcessingAt, isNull);
+  });
+
+  test('a copy keeps when the item reached each status', () async {
+    final item = QueueItem(
+      batchId: 'batch',
+      data: 1,
+      status: QueueItemStatus.pending,
+    );
+    for (final status in [
+      QueueItemStatus.processing,
+      QueueItemStatus.completed,
+      QueueItemStatus.failed,
+      QueueItemStatus.canceled,
+      QueueItemStatus.removed,
+    ]) {
+      item.updateStatus(status);
+
+      /// Long enough for the clock to move on, on Windows too
+      await wait(20);
+
+      final copy = item.copyWith();
+
+      expect(copy.status, status);
+      expect(copy.queuedAt, item.queuedAt, reason: status.name);
+      expect(copy.startedProcessingAt, item.startedProcessingAt,
+          reason: status.name);
+      expect(copy.completedAt, item.completedAt, reason: status.name);
+      expect(copy.failedAt, item.failedAt, reason: status.name);
+      expect(copy.canceledAt, item.canceledAt, reason: status.name);
+      expect(copy.removedAt, item.removedAt, reason: status.name);
+      expect(copy.retryCount, 0);
+    }
+  });
+
+  test('toString lists the fields, and the error only if there is one', () {
+    final item = QueueItem(
+      id: 'a',
+      batchId: 'batch',
+      data: 1,
+      status: QueueItemStatus.pending,
+    );
+
+    expect(
+      item.toString(),
+      'Id: a\n'
+      'Data: 1\n'
+      'Batch Id: batch\n'
+      'Status: QueueItemStatus.pending\n'
+      'Queued At: ${item.queuedAt}\n'
+      'Started Processing At: null\n'
+      'Completed At: null\n'
+      'Failed At: null\n'
+      'Canceled At: null\n'
+      'Removed At: null\n',
+    );
+    expect(item.copyWith(error: 'oops').toString(), endsWith('Error: oops\n'));
+  });
+
+  test('summaryTableLine lines up the status, data and id', () {
+    final item = QueueItem(
+      id: 'a',
+      batchId: 'batch',
+      data: 1,
+      status: QueueItemStatus.pending,
+    );
+
+    expect(
+      item.summaryTableLine,
+      'pending         | 1                      | a                     ',
+    );
   });
 }

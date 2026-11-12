@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:queue_it/queue_it.dart';
 import 'package:test/test.dart';
 
@@ -29,6 +31,17 @@ void main() {
 
   QueueItem<int> item(int data) =>
       queue.items().firstWhere((item) => item.data == data);
+
+  /// A queue whose item fails, then waits for [delay] to be retried.
+  QueueIt<int> failing({Duration delay = const Duration(hours: 1)}) {
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (retry) => delay,
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    return queue;
+  }
 
   group('cancel', () {
     test('skips a pending item', () async {
@@ -132,6 +145,24 @@ void main() {
       expect(statuses(queue), ['1:completed', '2:canceled', '3:canceled']);
       expect(events, contains('canceledAll'));
     });
+
+    test('lets the queue stop by itself when it cancels the waiting retries',
+        () async {
+      final queue = failing();
+      final events = recordEvents(queue);
+      queue
+        ..add(1)
+        ..start();
+      await wait(5);
+      expect(statuses(queue), ['1:pending']);
+      events.clear();
+
+      queue.cancelAll();
+
+      await queue.running.timeout(const Duration(seconds: 1));
+      expect(queue.isProcessing, isFalse);
+      expect(events, ['canceledAll', 'stoppedProcessing', 'stoppedQueue']);
+    });
   });
 
   group('remove', () {
@@ -180,6 +211,39 @@ void main() {
       expect(queue.removeById(id), isFalse);
       expect(queue.removeById(queue.items().single.id), isTrue);
       expect(queue.items(), isEmpty);
+    });
+
+    test('leaves the rest of the current batch when it removes the first item',
+        () {
+      final snapshots = <QueueSnapshot<int>>[];
+      queue.onUpdate.listen(snapshots.add);
+      final first = queue.add(1);
+      queue
+        ..add(2)
+        ..add(3);
+
+      queue.removeById(first);
+
+      expect(queue.currentBatchItems.map((item) => item.data), [2, 3]);
+      expect(snapshots.last.items.map((item) => item.data), [2, 3]);
+    });
+
+    test('lets the queue stop by itself when it removes the waiting retry',
+        () async {
+      final queue = failing();
+      final events = recordEvents(queue);
+      final id = queue.add(1);
+      queue.start();
+      await wait(5);
+      expect(statuses(queue), ['1:pending']);
+      events.clear();
+
+      queue.removeById(id);
+
+      await queue.running.timeout(const Duration(seconds: 1));
+      expect(queue.isProcessing, isFalse);
+      expect(events,
+          ['itemRemoved:1:removed', 'stoppedProcessing', 'stoppedQueue']);
     });
 
     test('lets go of the item right away', () async {
@@ -250,5 +314,136 @@ void main() {
       queue.stop();
       await queue.running;
     });
+
+    test('leaves the current batch empty', () {
+      final snapshots = <QueueSnapshot<int>>[];
+      queue.onUpdate.listen(snapshots.add);
+      queue
+        ..add(1)
+        ..add(2);
+
+      queue.removeAll();
+
+      expect(queue.currentBatchItems, isEmpty);
+      expect(snapshots.last.event, QueueEvent.removedAll);
+      expect(snapshots.last.items, isEmpty);
+    });
+
+    test('forgets the ids, which can be used again', () async {
+      queue.add(1, id: 'a');
+
+      queue.removeAll();
+
+      expect(queue.hasItemById('a'), isFalse);
+      expect(queue.removeById('a'), isFalse);
+      expect(queue.cancelById('a'), isFalse);
+      await expectLater(queue.waitFor('a'), throwsArgumentError);
+      expect(queue.add(2, id: 'a'), 'a');
+      expect(statuses(queue), ['2:pending']);
+    });
+
+    test(
+        'starts a new batch for an item added after a listener removes '
+        'everything as an attempt fails', () async {
+      final queue = QueueIt<int>(
+        retries: 1,
+        itemHandler: (item) => throw Exception('failed'),
+      );
+      addTearDown(queue.dispose);
+      String? added;
+      queue.onUpdate.listen((snapshot) {
+        if (snapshot.eventItem?.status == QueueItemStatus.failed &&
+            added == null) {
+          queue.removeAll();
+          added = queue.add(2);
+        }
+      });
+      queue.add(1);
+      final firstBatch = queue.currentBatchId;
+      queue.start(stopAutomatically: false);
+      await wait(10);
+
+      expect(added, isNotNull);
+      expect(queue.items().single.batchId, isNot(firstBatch));
+    });
+  });
+
+  for (final (name, stop) in [
+    ('cancel', (QueueItem<int> item) => queue.cancel(item)),
+    ('remove', (QueueItem<int> item) => queue.remove(item)),
+    ('cancelAll', (QueueItem<int> item) => queue.cancelAll()),
+    ('removeAll', (QueueItem<int> item) => queue.removeAll()),
+  ]) {
+    test(
+        '$name leaves a processing item its place among the parallel items '
+        'until its handler returns', () async {
+      queue
+        ..add(1)
+        ..start(stopAutomatically: false);
+      await wait();
+
+      stop(item(1));
+      queue.add(2);
+      await wait(20);
+      expect(gate.started, [1]);
+
+      gate.release(1);
+      await wait();
+      expect(gate.started, [1, 2]);
+    });
+  }
+
+  // If the timer of a retry that was canceled or removed fired, the finished
+  // item would be queued again: a stopped queue would count it as work, and
+  // the next start would begin and end processing with nothing to do.
+  for (final (name, finish) in <(String, void Function(QueueIt<int>, String))>[
+    ('cancelById', (queue, id) => queue.cancelById(id)),
+    ('cancelAll', (queue, id) => queue.cancelAll()),
+    ('removeById', (queue, id) => queue.removeById(id)),
+    ('removeAll', (queue, id) => queue.removeAll()),
+  ]) {
+    test('$name stops the timer of a waiting retry', () async {
+      final timers = <Timer>[];
+      await runZoned(
+        () async {
+          final queue = failing(delay: const Duration(milliseconds: 20));
+          final id = queue.add(1);
+          queue.start();
+          await wait(5);
+
+          finish(queue, id);
+          await queue.running;
+
+          expect(timers.where((timer) => timer.isActive), isEmpty);
+          final events = recordEvents(queue);
+          final firstBatch = queue.currentBatchId;
+          await wait(60);
+          // The next item starts a batch: nothing is left of the last one.
+          queue.add(2);
+          expect(queue.currentBatchId, isNot(firstBatch));
+          expect(events, ['itemAdded:2:pending']);
+        },
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, duration, callback) {
+            final timer = parent.createTimer(zone, duration, callback);
+            if (duration == const Duration(milliseconds: 20)) {
+              timers.add(timer);
+            }
+            return timer;
+          },
+        ),
+      );
+    });
+  }
+
+  test('cancels and removes items after dispose failed their waitFor',
+      () async {
+    final id = queue.add(1);
+    final finished = queue.waitFor(id);
+    queue.dispose();
+    await expectLater(finished, throwsStateError);
+
+    expect(queue.cancelById(id), isTrue);
+    expect(queue.removeById(id), isTrue);
   });
 }

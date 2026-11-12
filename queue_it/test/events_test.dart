@@ -184,7 +184,7 @@ void main() {
   });
 
   test('snapshots hold the queue state at the time of the event', () async {
-    final queue = QueueIt<int>(itemHandler: (item) {});
+    final queue = QueueIt<int>(retries: 3, itemHandler: (item) {});
     addTearDown(queue.dispose);
     final snapshots = <QueueSnapshot<int>>[];
     queue.onUpdate.listen(snapshots.add);
@@ -197,7 +197,7 @@ void main() {
         (snapshot) => snapshot.eventItem?.status == QueueItemStatus.processing);
     expect(processing.isStarted, isTrue);
     expect(processing.isProcessing, isTrue);
-    expect(processing.retries, 0);
+    expect(processing.retries, 3);
     expect(processing.currentBatchId, queue.currentBatchId);
     // eventItem is a copy; items are the queue's live items.
     expect(processing.eventItem!.status, QueueItemStatus.processing);

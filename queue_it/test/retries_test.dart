@@ -141,6 +141,46 @@ void main() {
     expect(processed, ['1.0', '2.0', '1.1', '2.1', '3.0']);
   });
 
+  test(
+      'keeps a retry ahead of the others when a listener stops the queue as '
+      'it is about to start', () async {
+    final attempts = <int>[];
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (retry) => const Duration(milliseconds: 20),
+      itemHandler: (item) {
+        attempts.add(item.data);
+        if (item.retryCount == 0) throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start(stopAutomatically: false);
+    await wait(5);
+    expect(attempts, [1, 2]);
+    queue.stop();
+    // Both retries come due while the queue is stopped.
+    await wait(80);
+    var stopped = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.startedProcessing && !stopped) {
+        stopped = true;
+        queue.stop();
+      }
+    });
+    queue.start();
+    await queue.running;
+    expect(attempts, [1, 2]);
+
+    queue.start();
+    await queue.running;
+
+    expect(attempts, [1, 2, 1, 2]);
+    expect(statuses(queue), ['1:completed', '2:completed']);
+  });
+
   test('fails an item without retrying when retryIf says no', () async {
     final errors = <Object>[];
     final queue = QueueIt<int>(
@@ -163,6 +203,36 @@ void main() {
     expect(queue.items().map((item) => item.retryCount), [0, 3]);
     expect(statuses(queue), ['1:failed', '2:failed']);
     expect(errors, hasLength(4));
+  });
+
+  test(
+      'completes waitFor on the failure that is not retried, with retries left',
+      () async {
+    final failedWith = <int>[];
+    final queue = QueueIt<String>(
+      retries: 2,
+      retryIf: (error) => error is! FormatException,
+      itemHandler: (item) => throw item.retryCount == 0
+          ? StateError('busy')
+          : const FormatException('bad file'),
+    );
+    addTearDown(queue.dispose);
+    // To a listener both failures look the same: failed, with retries left.
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed) {
+        failedWith.add(item!.retryCount);
+      }
+    });
+    final finished = queue.waitFor(queue.add('a'));
+    queue.start();
+
+    final item = await finished;
+
+    expect(item.status, QueueItemStatus.failed);
+    expect(item.error, isFormatException);
+    expect(item.retryCount, 1);
+    expect(failedWith, [0, 1]);
   });
 
   group('retryDelay', () {
@@ -685,6 +755,38 @@ void main() {
       await expectLater(before, throwsStateError);
       expect(statuses(queue), ['1:pending']);
       await expectLater(queue.waitFor(id), throwsStateError);
+    });
+
+    test(
+        'retryIf or retryDelay that disposes the queue leaves the item as it is',
+        () async {
+      for (final callback in ['retryIf', 'retryDelay']) {
+        late QueueIt<int> queue;
+        queue = QueueIt<int>(
+          retries: 1,
+          retryIf: callback == 'retryIf'
+              ? (error) {
+                  queue.dispose();
+                  return true;
+                }
+              : null,
+          retryDelay: callback == 'retryDelay'
+              ? (retry) {
+                  queue.dispose();
+                  return Duration.zero;
+                }
+              : null,
+          itemHandler: (item) => throw Exception('failed'),
+        );
+
+        queue
+          ..add(1)
+          ..start();
+        await wait(5);
+
+        expect(statuses(queue), ['1:processing'], reason: callback);
+        expect(queue.items().single.error, isNull, reason: callback);
+      }
     });
   });
 }
