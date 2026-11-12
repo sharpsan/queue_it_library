@@ -14,12 +14,17 @@ final _png = base64Decode(
   '60e6kgAAAABJRU5ErkJggg==',
 );
 
-/// Hands out six 2 MB photos at a time: photo_1.jpg, photo_2.jpg and so on.
+/// Hands out 2 MB photos, six at a time unless [perPick] says otherwise:
+/// photo_1.jpg, photo_2.jpg and so on.
 class _Gallery {
+  _Gallery({this.perPick = 6});
+
+  /// How many photos each pick returns.
+  final int perPick;
   var _count = 0;
 
   Future<List<Photo>> pick() async => [
-    for (var i = 0; i < 6; i++)
+    for (var i = 0; i < perPick; i++)
       Photo(
         name: 'photo_${++_count}.jpg',
         size: 2000000,
@@ -29,13 +34,17 @@ class _Gallery {
 }
 
 /// Uploads each photo in ten steps of 100 ms. Every attempt at the photos in
-/// [failing] fails halfway, and so does the first attempt at those in [flaky].
+/// [failing] fails halfway, and so does the first attempt at those in [flaky],
+/// and any attempt [failWhen] picks.
 class _Server {
-  _Server({Set<String>? failing, this.flaky = const {}})
+  _Server({Set<String>? failing, this.flaky = const {}, this.failWhen})
     : failing = failing ?? {};
 
   final Set<String> failing;
   final Set<String> flaky;
+
+  /// Whether an attempt at a photo fails, on top of [failing] and [flaky].
+  final bool Function(String name, int attempt)? failWhen;
   final attempts = <String, int>{};
 
   /// The photos that finished uploading.
@@ -56,7 +65,8 @@ class _Server {
     );
     final fails =
         failing.contains(photo.name) ||
-        (attempt == 1 && flaky.contains(photo.name));
+        (attempt == 1 && flaky.contains(photo.name)) ||
+        (failWhen?.call(photo.name, attempt) ?? false);
     late final StreamController<double> controller;
     Timer? timer;
     var step = 0;
@@ -100,15 +110,21 @@ class _Server {
 
 /// Tests on a phone-sized screen, where the six photos added at a time fit
 /// above the Add photos button.
-void _usePhoneScreen(WidgetTester tester) {
+void _usePhoneScreen(WidgetTester tester) =>
+    _useScreen(tester, const Size(360, 780));
+
+/// Tests on a screen of [size] logical pixels.
+void _useScreen(WidgetTester tester, Size size, {double pixelRatio = 3}) {
   tester.view
-    ..physicalSize = const Size(1080, 2340)
-    ..devicePixelRatio = 3;
+    ..physicalSize = size * pixelRatio
+    ..devicePixelRatio = pixelRatio;
   addTearDown(tester.view.reset);
 }
 
-Widget _page(_Server server) =>
-    example.UploadsPage(pickPhotos: _Gallery().pick, upload: server.upload);
+Widget _page(_Server server, {_Gallery? gallery}) => example.UploadsPage(
+  pickPhotos: (gallery ?? _Gallery()).pick,
+  upload: server.upload,
+);
 
 Future<void> _pumpPage(WidgetTester tester, _Server server) {
   _usePhoneScreen(tester);
@@ -122,15 +138,16 @@ Future<void> _addPhotos(WidgetTester tester) async {
   await tester.pump();
 }
 
-/// Pumps 100 ms frames until [done], or fails after [limit].
+/// Pumps frames of [step] until [done], or fails after [limit].
 Future<void> _pumpUntil(
   WidgetTester tester,
   bool Function() done, {
   Duration limit = const Duration(seconds: 20),
+  Duration step = _frame100,
 }) async {
-  for (var time = Duration.zero; !done(); time += _frame100) {
+  for (var time = Duration.zero; !done(); time += step) {
     if (time > limit) fail('Gave up waiting after $limit');
-    await tester.pump(_frame100);
+    await tester.pump(step);
   }
 }
 
@@ -208,6 +225,28 @@ Future<void> _pumpOut(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 500));
   }
+}
+
+const _frame50 = Duration(milliseconds: 50);
+
+/// The Clear finished button.
+IconButton _clearButton(WidgetTester tester) =>
+    tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.clear_all));
+
+/// Pumps the page in a left-to-right or right-to-left app.
+Future<void> _pumpPageIn(
+  WidgetTester tester,
+  _Server server,
+  TextDirection direction,
+) {
+  _usePhoneScreen(tester);
+  return tester.pumpWidget(
+    MaterialApp(
+      builder: (context, child) =>
+          Directionality(textDirection: direction, child: child!),
+      home: _page(server),
+    ),
+  );
 }
 
 void main() {
@@ -599,4 +638,535 @@ void main() {
     expect(find.text(names[1]), findsNothing);
     expect(find.byType(ListTile), findsNWidgets(4));
   });
+
+  testWidgets('waits a second longer before each retry', (tester) async {
+    final server = _Server(failing: {'photo_1.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+
+    // The first attempt fails after 0.5 s, and the first retry starts a second
+    // later.
+    await _pumpFor(tester, const Duration(milliseconds: 1300));
+    expect(server.attempts['photo_1.jpg'], 1);
+    await _pumpFor(tester, const Duration(milliseconds: 400));
+    expect(server.attempts['photo_1.jpg'], 2);
+    // That one fails at 2 s, and the second retry starts two seconds later.
+    await _pumpFor(tester, const Duration(milliseconds: 1800));
+    expect(server.attempts['photo_1.jpg'], 2);
+    await _pumpFor(tester, const Duration(milliseconds: 800));
+    expect(server.attempts['photo_1.jpg'], 3);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('starts each attempt from nothing sent', (tester) async {
+    await _pumpPage(tester, _Server(flaky: {'photo_1.jpg'}));
+    await _addPhotos(tester);
+    final seen = <String>[];
+    for (var i = 0; i < 60 && !seen.any((s) => s.startsWith('Retry 1')); i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      seen.add(_statuses(tester)[0]);
+    }
+
+    // It had sent 0.8 MB when the first attempt failed.
+    expect(
+      seen,
+      containsAllInOrder(['0.8 of 2.0 MB', 'Upload failed, retrying']),
+    );
+    expect(seen.last, 'Retry 1 · 0.0 of 2.0 MB');
+    await _pumpUntilDone(tester);
+  });
+
+  testWidgets('stops an upload when it fails', (tester) async {
+    var started = 0;
+    var stopped = 0;
+    Stream<double> upload(Photo photo) {
+      // Fails without closing its stream.
+      late final StreamController<double> controller;
+      controller = StreamController(
+        onListen: () {
+          started++;
+          controller.addError(const UploadException('Connection lost'));
+        },
+        onCancel: () => stopped++,
+      );
+      return controller.stream;
+    }
+
+    _usePhoneScreen(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: example.UploadsPage(pickPhotos: _Gallery().pick, upload: upload),
+      ),
+    );
+    await _addPhotos(tester);
+    await tester.pump();
+    expect(started, greaterThan(0));
+    expect(stopped, started);
+
+    await _pumpUntilDone(tester);
+    expect(_statuses(tester), List.filled(6, _failed));
+    expect(started, 18);
+    expect(stopped, 18);
+    await _pumpOut(tester);
+  });
+
+  testWidgets("hides a photo's SnackBar when the photo is removed", (
+    tester,
+  ) async {
+    await _pumpPage(tester, _Server(failing: {'photo_1.jpg'}));
+    await _addPhotos(tester);
+    await _pumpUntil(tester, _showsSnackBar);
+    await _pumpFor(tester, const Duration(milliseconds: 500));
+    expect(find.text("photo_1.jpg couldn't be uploaded"), findsOneWidget);
+
+    await tester.drag(find.byType(Dismissible).at(0), const Offset(-800, 0));
+    // Long before the SnackBar would go by itself.
+    await _pumpFor(tester, const Duration(milliseconds: 1500));
+
+    expect(find.text('photo_1.jpg'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+    await _pumpUntilDone(tester);
+  });
+
+  testWidgets("keeps a photo's SnackBar when another photo is removed", (
+    tester,
+  ) async {
+    await _pumpPage(tester, _Server(failing: {'photo_1.jpg'}));
+    await _addPhotos(tester);
+    await _pumpUntil(tester, _showsSnackBar);
+    await _pumpFor(tester, const Duration(milliseconds: 500));
+
+    await tester.drag(find.byType(Dismissible).at(1), const Offset(-800, 0));
+    await _pumpFor(tester, const Duration(milliseconds: 1500));
+
+    expect(find.text('photo_2.jpg'), findsNothing);
+    expect(find.text("photo_1.jpg couldn't be uploaded"), findsOneWidget);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('retries a photo once when Retry is tapped twice in a frame', (
+    tester,
+  ) async {
+    final server = _Server(failing: {'photo_1.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+    expect(server.attempts['photo_1.jpg'], 3);
+    server.failing.clear();
+
+    await _tapIn(tester, 0, 'Retry');
+    await _tapIn(tester, 0, 'Retry');
+    await _pumpUntilDone(tester);
+
+    expect(_statuses(tester), List.filled(6, _uploaded));
+    expect(server.attempts['photo_1.jpg'], 4);
+    expect(
+      server.uploaded.where((name) => name == 'photo_1.jpg'),
+      hasLength(1),
+    );
+  });
+
+  testWidgets('has nothing left to clear after a retried photo is cleared', (
+    tester,
+  ) async {
+    final server = _Server(failing: {'photo_1.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+    server.failing.clear();
+    await _tapIn(tester, 0, 'Retry');
+    await _pumpUntilDone(tester);
+    expect(_statuses(tester), List.filled(6, _uploaded));
+
+    await tester.tap(find.byTooltip('Clear finished'));
+    await _pumpOut(tester);
+
+    expect(find.text('No uploads yet'), findsOneWidget);
+    expect(_clearButton(tester).onPressed, isNull);
+  });
+
+  testWidgets('Clear finished leaves the photos that are not finished', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await tester.tap(find.byTooltip('Pause uploads'));
+    await _pumpFor(tester, const Duration(milliseconds: 1500));
+    expect(_statuses(tester), [
+      ...List.filled(3, _uploaded),
+      ...List.filled(3, 'Waiting · 2.0 MB'),
+    ]);
+
+    await tester.tap(find.byTooltip('Clear finished'));
+    await _pumpFor(tester, const Duration(milliseconds: 700));
+
+    expect(_names(tester), [for (var n = 4; n <= 6; n++) 'photo_$n.jpg']);
+    expect(_statuses(tester), List.filled(3, 'Waiting · 2.0 MB'));
+    expect(_clearButton(tester).onPressed, isNull);
+    await tester.tap(find.byTooltip('Resume uploads'));
+    await _pumpUntilDone(tester);
+    expect(server.uploaded, hasLength(6));
+  });
+
+  testWidgets('Clear finished clears the photos that failed', (tester) async {
+    await _pumpPage(tester, _Server(failing: {'photo_1.jpg', 'photo_2.jpg'}));
+    await _addPhotos(tester);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+    expect(_statuses(tester).take(2), [_failed, _failed]);
+
+    await tester.tap(find.byTooltip('Clear finished'));
+    await _pumpOut(tester);
+
+    expect(find.text('No uploads yet'), findsOneWidget);
+    expect(_clearButton(tester).onPressed, isNull);
+  });
+
+  testWidgets('ignores photos picked after the page has gone', (tester) async {
+    final picked = Completer<List<Photo>>();
+    _usePhoneScreen(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: example.UploadsPage(
+          pickPhotos: () => picked.future,
+          upload: _Server().upload,
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpWidget(const SizedBox());
+
+    picked.complete(await _Gallery().pick());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uploads photos added after pausing and resuming', (
+    tester,
+  ) async {
+    final server = _Server();
+    // Tall enough for twelve rows: rows off the screen aren't built.
+    _useScreen(tester, const Size(360, 1400), pixelRatio: 1);
+    await tester.pumpWidget(MaterialApp(home: _page(server)));
+    await _addPhotos(tester);
+    await tester.tap(find.byTooltip('Pause uploads'));
+    await _pumpFor(tester, const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Resume uploads'));
+    await _pumpUntilDone(tester);
+    expect(server.uploaded, hasLength(6));
+    await _pumpFor(tester, const Duration(milliseconds: 500));
+    expect(find.byTooltip('Pause uploads'), findsOneWidget);
+    await _addPhotos(tester);
+    await _pumpUntilDone(tester);
+    expect(server.uploaded, hasLength(12));
+    await _pumpOut(tester);
+  });
+
+  testWidgets('only a swipe towards the start removes a photo', (tester) async {
+    final server = _Server();
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntilDone(tester);
+    await tester.fling(find.byType(ListTile).first, const Offset(300, 0), 1000);
+    await _pumpFor(tester, const Duration(seconds: 1));
+    expect(_names(tester), hasLength(6));
+    await tester.fling(
+      find.byType(ListTile).first,
+      const Offset(-300, 0),
+      1000,
+    );
+    await _pumpFor(tester, const Duration(seconds: 1));
+    expect(_names(tester), hasLength(5));
+    await _pumpOut(tester);
+  });
+
+  testWidgets('stops a swiped photo before its row has gone', (tester) async {
+    final server = _Server();
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpFor(tester, const Duration(milliseconds: 200));
+    await tester.fling(
+      find.byType(ListTile).first,
+      const Offset(-300, 0),
+      1000,
+    );
+    await _pumpUntil(tester, () => server.stopped.isNotEmpty, step: _frame50);
+    expect(server.stopped, ['photo_1.jpg']);
+    // Its row is still closing.
+    expect(find.byType(Dismissible), findsNWidgets(6));
+    await _pumpUntilDone(tester);
+    expect(_names(tester), isNot(contains('photo_1.jpg')));
+    await _pumpOut(tester);
+  });
+
+  testWidgets("doesn't slide in the rows scrolled to later", (tester) async {
+    final server = _Server();
+    _usePhoneScreen(tester);
+    await tester.pumpWidget(
+      MaterialApp(home: _page(server, gallery: _Gallery(perPick: 30))),
+    );
+    await tester.tap(find.byTooltip('Pause uploads'));
+    await _addPhotos(tester);
+    await _pumpFor(tester, const Duration(seconds: 1));
+    expect(find.text('photo_25.jpg'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pump(_frame50);
+    expect(find.text('photo_25.jpg'), findsOneWidget);
+    final slide = tester.widget<SlideTransition>(
+      find
+          .ancestor(
+            of: find.text('photo_25.jpg'),
+            matching: find.byType(SlideTransition),
+          )
+          .first,
+    );
+    expect(slide.position.value, Offset.zero);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('the failure SnackBar goes after a few seconds', (tester) async {
+    final server = _Server(failing: {'photo_1.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntil(tester, _showsSnackBar, step: _frame50);
+    await _pumpFor(tester, const Duration(seconds: 6));
+    expect(find.byType(SnackBar), findsNothing);
+    await _pumpOut(tester);
+  });
+
+  testWidgets("a SnackBar's Retry does nothing once the row has retried", (
+    tester,
+  ) async {
+    final server = _Server(
+      failWhen: (name, attempt) => name == 'photo_1.jpg' && attempt <= 3,
+    );
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntil(tester, _showsSnackBar, step: _frame50);
+    await _pumpFor(tester, const Duration(milliseconds: 500));
+    expect(server.attempts['photo_1.jpg'], 3);
+    await _tapIn(tester, 0, 'Retry');
+    await tester.pump(_frame50);
+    // The SnackBar is on its way out and still takes taps.
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Retry'));
+    await _pumpFor(tester, const Duration(milliseconds: 300));
+    expect(server.attempts['photo_1.jpg'], 4);
+    expect(server.running, 1);
+    await _pumpUntilDone(tester);
+    expect(server.uploaded, hasLength(6));
+    expect(server.stopped, isEmpty);
+    await _pumpOut(tester);
+  });
+
+  // photo_1 runs out of retries at 4.5 s and photo_4 at 5.0 s, while photo_1's
+  // SnackBar is showing.
+  testWidgets('no SnackBar for a photo cleared while the previous SnackBar '
+      'is hiding', (tester) async {
+    final server = _Server(failing: {'photo_1.jpg', 'photo_4.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntil(
+      tester,
+      () => find.text("photo_1.jpg couldn't be uploaded").evaluate().isNotEmpty,
+      step: const Duration(milliseconds: 50),
+    );
+    // Wait for photo_4 to fail for good.
+    await _pumpUntil(
+      tester,
+      () => _statuses(tester)[3] == _failed,
+      step: const Duration(milliseconds: 50),
+    );
+    expect(_statuses(tester)[0], _failed);
+    // photo_1's SnackBar is on its way out; photo_4's is waiting behind it.
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byTooltip('Clear finished'));
+    await _pumpFor(tester, const Duration(seconds: 2));
+    expect(find.text('No uploads yet'), findsOneWidget);
+    // A SnackBar about a photo that's no longer there, with a Retry that does
+    // nothing:
+    expect(find.byType(SnackBar), findsNothing);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('no SnackBar for a photo retried from its row while the '
+      'previous SnackBar is hiding', (tester) async {
+    final server = _Server(failing: {'photo_1.jpg', 'photo_4.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntil(
+      tester,
+      () => _statuses(tester)[3] == _failed,
+      step: const Duration(milliseconds: 50),
+    );
+    server.failing.clear();
+    // Tap photo_4's Retry as soon as it takes taps.
+    var tapped = false;
+    for (var i = 0; i < 40 && !tapped; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final retry = _buttonIn(3, 'Retry');
+      if (retry.evaluate().isEmpty) continue;
+      if (retry.hitTestable().evaluate().isEmpty) continue;
+      await tester.tap(retry);
+      tapped = true;
+      // ignore: avoid_print
+      print('tapped Retry ${(i + 1) * 16} ms after the failure showed');
+    }
+    expect(tapped, isTrue);
+    await _pumpFor(tester, const Duration(milliseconds: 600));
+    expect(_statuses(tester)[3], isNot(_failed));
+    expect(find.text("photo_4.jpg couldn't be uploaded"), findsNothing);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('retrying from a SnackBar on its way out keeps the next '
+      'SnackBar tied to its photo', (tester) async {
+    final server = _Server(failing: {'photo_1.jpg', 'photo_4.jpg'});
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpUntil(
+      tester,
+      () => _statuses(tester)[3] == _failed,
+      step: const Duration(milliseconds: 50),
+    );
+    server.failing.clear();
+    // photo_1's SnackBar is hiding. Tap its Retry.
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text("photo_1.jpg couldn't be uploaded"), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await _pumpFor(tester, const Duration(milliseconds: 600));
+    // photo_4's SnackBar is showing now. Retry photo_4 from its row.
+    expect(find.text("photo_4.jpg couldn't be uploaded"), findsOneWidget);
+    await _tapIn(tester, 3, 'Retry');
+    await _pumpFor(tester, const Duration(milliseconds: 600));
+    expect(_statuses(tester)[3], isNot(_failed));
+    expect(find.text("photo_4.jpg couldn't be uploaded"), findsNothing);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('three quick taps on Pause', (tester) async {
+    final server = _Server();
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    await _pumpFor(tester, const Duration(milliseconds: 300));
+    expect(find.text('Uploading photos'), findsOneWidget);
+
+    // Pause and Resume are the same spot. Taps at 0, 100 and 200 ms.
+    final spot = tester.getCenter(find.byTooltip('Pause uploads'));
+    await tester.tapAt(spot);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byTooltip('Resume uploads'), findsOneWidget);
+    await tester.tapAt(spot);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byTooltip('Pause uploads'), findsOneWidget);
+    await tester.tapAt(spot);
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Resume uploads'), findsOneWidget);
+    await tester.tapAt(spot);
+    await _pumpUntilDone(tester);
+    await _pumpOut(tester);
+  });
+
+  testWidgets('shows only the latest SnackBar when photos run out of retries '
+      'one after the other', (tester) async {
+    final server = _Server(
+      failing: {for (var n = 1; n <= 6; n++) 'photo_$n.jpg'},
+    );
+    await _pumpPage(tester, server);
+    await _addPhotos(tester);
+    // The first three run out together, and the other three half a second
+    // later, while the first SnackBar is still up.
+    await _pumpUntil(
+      tester,
+      () => _statuses(tester).every((status) => status == _failed),
+      step: _frame50,
+    );
+    await _pumpFor(tester, const Duration(seconds: 1));
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text("photo_6.jpg couldn't be uploaded"), findsOneWidget);
+    // And none of the earlier ones comes back after it.
+    await _pumpFor(tester, const Duration(seconds: 5));
+    expect(find.byType(SnackBar), findsNothing);
+    await _pumpOut(tester);
+  });
+
+  for (final direction in TextDirection.values) {
+    final rtl = direction == TextDirection.rtl;
+
+    testWidgets('${direction.name}: swiping a photo uncovers the delete icon', (
+      tester,
+    ) async {
+      final server = _Server();
+      await _pumpPageIn(tester, server, direction);
+      await _addPhotos(tester);
+      await _pumpFor(tester, const Duration(milliseconds: 500));
+
+      // Swipe from the end to the start: leftwards, or rightwards in RTL.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(Dismissible).first),
+      );
+      await gesture.moveBy(Offset(rtl ? 30 : -30, 0));
+      await gesture.moveBy(Offset(rtl ? 90 : -90, 0));
+      await tester.pump();
+
+      final tile = tester.getRect(find.byType(ListTile).first);
+      final icon = tester.getRect(
+        find.descendant(
+          of: find.byType(Dismissible).first,
+          matching: find.byIcon(Icons.delete_outline),
+        ),
+      );
+      // The tile has moved; the icon is in the strip it uncovered.
+      if (rtl) {
+        expect(tile.left, greaterThan(80));
+        expect(icon.right, lessThanOrEqualTo(tile.left));
+      } else {
+        expect(tile.right, lessThan(280));
+        expect(icon.left, greaterThanOrEqualTo(tile.right));
+      }
+      await gesture.up();
+      await _pumpUntilDone(tester);
+      await _pumpOut(tester);
+    });
+
+    testWidgets('${direction.name}: a status that changes stays at the start '
+        'of its line', (tester) async {
+      final server = _Server();
+      await _pumpPageIn(tester, server, direction);
+      await _addPhotos(tester);
+      // The fourth photo waits, then uploads: both lines are there while they
+      // switch.
+      Iterable<Element> lines() => find
+          .descendant(
+            of: find.byType(ListTile).at(3),
+            matching: find.byType(Text),
+          )
+          .evaluate()
+          .skip(1);
+      for (var i = 0; i < 100 && lines().length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(lines(), hasLength(2));
+      await tester.pump(const Duration(milliseconds: 32));
+      final rects = [
+        for (final line in lines()) tester.getRect(find.byWidget(line.widget)),
+      ];
+      expect(rects[0].width, isNot(rects[1].width));
+      if (rtl) {
+        expect(rects[0].right, rects[1].right);
+      } else {
+        expect(rects[0].left, rects[1].left);
+      }
+      await _pumpUntilDone(tester);
+      await _pumpOut(tester);
+    });
+  }
 }

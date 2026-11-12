@@ -5,7 +5,7 @@ time and shows how each one is going.
 
 The uploads are simulated, so the example runs without a server, and about a third of them fail on
 purpose to show off retries. A failed upload is retried twice, after waiting 1 and then 2 seconds,
-and you get a message if it still fails. The photos come from [Lorem Picsum](https://picsum.photos).
+and you get a message if it still fails. The photos are bundled with the example.
 
 You can:
 

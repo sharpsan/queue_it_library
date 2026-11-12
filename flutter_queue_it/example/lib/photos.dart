@@ -29,7 +29,7 @@ class UploadException implements Exception {
 final _random = math.Random();
 var _picked = 0;
 
-/// Stands in for a photo picker: returns six photos from Lorem Picsum.
+/// Stands in for a photo picker: returns the six photos in `assets/photos/`.
 Future<List<Photo>> pickSamplePhotos() async => [
   for (var i = 0; i < 6; i++) _samplePhoto(_picked++),
 ];
@@ -37,7 +37,7 @@ Future<List<Photo>> pickSamplePhotos() async => [
 Photo _samplePhoto(int index) => Photo(
   name: 'IMG_${2041 + index}.jpg',
   size: 1500000 + _random.nextInt(3000000),
-  image: NetworkImage('https://picsum.photos/seed/queue_it_$index/300'),
+  image: AssetImage('assets/photos/${index % 6 + 1}.jpg'),
 );
 
 /// Pretends to upload [photo] at about 1.5 MB/s, so the example runs without a

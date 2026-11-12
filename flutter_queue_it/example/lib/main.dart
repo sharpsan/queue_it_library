@@ -209,7 +209,9 @@ class _UploadsPageState extends State<UploadsPage> {
   /// Tells the user when a photo has run out of retries.
   void _showFailure(BuildContext context, QueueSnapshot<Photo> snapshot) {
     final item = snapshot.eventItem;
-    // Every failed attempt sends a failed status. Only the last one stays.
+    // Every failed attempt sends a failed status, and this queue retries every
+    // error, so only the attempt with no retries left stays. With a retryIf,
+    // an item can fail for good sooner: waitFor tells you when.
     if (item == null ||
         item.status != QueueItemStatus.failed ||
         item.retryCount < _queue.retries) {
@@ -218,7 +220,7 @@ class _UploadsPageState extends State<UploadsPage> {
     _failureShown = item.id;
     ScaffoldMessenger.of(context)
       // Show the latest failure right away. Each photo's row can retry it too.
-      ..hideCurrentSnackBar()
+      ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
           content: Text("${item.data.name} couldn't be uploaded"),
@@ -226,7 +228,7 @@ class _UploadsPageState extends State<UploadsPage> {
             label: 'Retry',
             onPressed: () {
               // The SnackBar hides itself.
-              _failureShown = null;
+              if (_failureShown == item.id) _failureShown = null;
               if (_rowOf(item.id) case final row?) _retry(row);
             },
           ),
@@ -240,7 +242,7 @@ class _UploadsPageState extends State<UploadsPage> {
   void _hideFailure(String itemId) {
     if (_failureShown != itemId) return;
     _failureShown = null;
-    _messenger.currentState?.hideCurrentSnackBar();
+    _messenger.currentState?.clearSnackBars();
   }
 
   @override
@@ -429,6 +431,10 @@ class _Summary extends StatelessWidget {
                   duration: const Duration(milliseconds: 250),
                   switchInCurve: _fadeIn,
                   switchOutCurve: _fadeOut,
+                  // The default one keys each child, and tapping Pause and Resume
+                  // quickly would show the same icon twice.
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
                   child: Icon(icon, key: ValueKey(icon), color: color),
                 ),
                 const SizedBox(width: 12),
@@ -510,7 +516,7 @@ class _PhotoTile extends StatelessWidget {
       background: ColoredBox(
         color: colors.errorContainer,
         child: Align(
-          alignment: Alignment.centerRight,
+          alignment: AlignmentDirectional.centerEnd,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Icon(Icons.delete_outline, color: colors.onErrorContainer),
@@ -588,7 +594,7 @@ class _PhotoTile extends StatelessWidget {
       switchInCurve: _fadeIn,
       switchOutCurve: _fadeOut,
       layoutBuilder: (current, previous) => Stack(
-        alignment: Alignment.topLeft,
+        alignment: AlignmentDirectional.topStart,
         children: [...previous, ?current],
       ),
       child: KeyedSubtree(
