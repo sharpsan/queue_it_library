@@ -23,6 +23,7 @@ jobs:
     name: Tag and publish a new version
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write # creates the tag
       actions: write # runs the Publish workflow
@@ -43,9 +44,33 @@ jobs:
             echo "::error::queue_it is $version but flutter_queue_it is $flutter_version. They're released together, so they need the same version."
             exit 1
           fi
-          if curl -sf -o /dev/null "https://pub.dev/api/packages/queue_it/versions/$version" &&
-            curl -sf -o /dev/null "https://pub.dev/api/packages/flutter_queue_it/versions/$version"; then
+
+          # Whether pub.dev has this version of a package: 200 means yes and 404 means no. Any
+          # other answer stops the release, so a version that's out is never tagged again.
+          on_pub_dev() {
+            status="$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --max-time 20 \
+              "https://pub.dev/api/packages/$1/versions/$version")" || true
+            case "$status" in
+              200) return 0 ;;
+              404) return 1 ;;
+            esac
+            echo "::error::Couldn't check $1 $version on pub.dev (HTTP $status). Nothing was tagged or published. Re-run this once pub.dev answers."
+            exit 1
+          }
+          if on_pub_dev queue_it && on_pub_dev flutter_queue_it; then
             echo "$version is on pub.dev already."
+            exit 0
+          fi
+
+          # Only main's newest commit is released. A run for an older one stops here, so it
+          # can't move the tag back or cancel the newer release.
+          main="$(git ls-remote origin refs/heads/main | cut -f 1)"
+          if [ -z "$main" ]; then
+            echo "::error::Couldn't read main's newest commit."
+            exit 1
+          fi
+          if [ "$main" != "$SHA" ]; then
+            echo "::notice::main has moved on to $main, so $SHA isn't released."
             exit 0
           fi
           tag="v$version"
