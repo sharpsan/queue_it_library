@@ -9,6 +9,10 @@
   errors in other widgets. Before, that only happened for events sent while Flutter was building,
   and the others went to the zone. If `FlutterError.onError` throws, the listener still gets the
   next events, and the frame's other callbacks still run.
+* Fix: in release builds, queue changes made while Flutter builds the app's first widgets now
+  wait for the end of that frame, as they do in debug builds. Before, a `QueueItListener` was
+  called in the middle of the build, and a `QueueItWidget` whose builder changed the queue
+  didn't rebuild for it.
 * Docs: the README's example imports the `material_ui` package, which Flutter 3.50 uses in place
   of `package:flutter/material.dart`.
 * Docs: the README and pub.dev page show the example app.

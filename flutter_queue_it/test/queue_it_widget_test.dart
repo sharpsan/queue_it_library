@@ -267,7 +267,7 @@ void main() {
   testWidgets(
       'rebuilds after the frame for changes made in a build outside '
       'a frame', (tester) async {
-    // Flutter builds the app's first widgets that way, in runApp.
+    // A build run by hand. Only debug mode can tell it's one.
     final shown = ValueNotifier(false);
     await tester.pumpWidget(Column(children: [
       recorder(queue, builds),

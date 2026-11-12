@@ -154,10 +154,14 @@ class _QueueItWidgetState<T> extends State<QueueItWidget<T>> {
   }
 
   /// Whether Flutter is building, laying out or disposing widgets: during a
-  /// frame, or while it attaches the app's first widgets.
+  /// frame, or while it builds the app's first widgets in runApp. In release
+  /// mode the only sign of that first build is that the app has no root
+  /// element yet. A tree with a BuildOwner of its own isn't the app's.
   bool get _isBuilding =>
       SchedulerBinding.instance.schedulerPhase ==
           SchedulerPhase.persistentCallbacks ||
+      (WidgetsBinding.instance.rootElement == null &&
+          identical(context.owner, WidgetsBinding.instance.buildOwner)) ||
       (WidgetsBinding.instance.buildOwner?.debugBuilding ?? false);
 
   @override

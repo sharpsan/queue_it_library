@@ -176,9 +176,13 @@ class _QueueItListenerState<T> extends State<QueueItListener<T>> {
     });
   }
 
+  /// Whether Flutter is building, laying out or disposing widgets. See
+  /// QueueItWidget's.
   bool get _isBuilding =>
       SchedulerBinding.instance.schedulerPhase ==
           SchedulerPhase.persistentCallbacks ||
+      (WidgetsBinding.instance.rootElement == null &&
+          identical(context.owner, WidgetsBinding.instance.buildOwner)) ||
       (WidgetsBinding.instance.buildOwner?.debugBuilding ?? false);
 
   @override
