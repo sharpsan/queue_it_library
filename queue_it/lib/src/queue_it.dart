@@ -159,7 +159,9 @@ class QueueIt<T> {
   /// Whether to use readable phrases as ids instead of UUIDs.
   ///
   /// The phrases, such as "big wizard cat", are unique within the queue. When
-  /// no unused phrase turns up after a few tries, the item gets a UUID.
+  /// no unused phrase turns up after a few tries, the item gets a UUID. There
+  /// are only a few hundred phrases, so the id of a removed item can be given
+  /// to a later one.
   final bool useFriendlyIds;
 
   /// Whether snapshots hold copies of the items instead of the queue's live
@@ -322,7 +324,8 @@ class QueueIt<T> {
   /// there was one.
   ///
   /// The item's status becomes [QueueItemStatus.removed]. If it's being
-  /// processed, its handler keeps running, but the queue ignores the outcome.
+  /// processed, its handler keeps running, and counts towards [parallel]
+  /// until it returns, but the queue ignores the outcome.
   bool remove(QueueItem<T> item) => removeById(item.id);
 
   /// Removes the item with [id]. Returns whether there was one. See [remove].
@@ -362,8 +365,9 @@ class QueueIt<T> {
   /// processing. Returns whether it was canceled.
   ///
   /// A canceled item isn't processed or retried. If it's being processed,
-  /// its handler keeps running, but the queue ignores the outcome. The
-  /// handler can check the item's status to stop early.
+  /// its handler keeps running, and counts towards [parallel] until it
+  /// returns, but the queue ignores the outcome. The handler can check the
+  /// item's status to stop early.
   ///
   /// A listener can also cancel an item in the `failed` event of an attempt
   /// that would be retried, to stop the retry.
@@ -400,8 +404,8 @@ class QueueIt<T> {
   /// future completes right away.
   ///
   /// The future completes with an [ArgumentError] if the queue has no item
-  /// with [id], and with a [StateError] if the queue is disposed before the
-  /// item finishes.
+  /// with [id], which includes an item removed before the call, and with a
+  /// [StateError] if the queue is disposed before the item finishes.
   Future<QueueItem<T>> waitFor(String id) {
     final item = _itemById(id);
     if (item == null) {

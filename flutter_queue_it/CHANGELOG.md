@@ -1,7 +1,7 @@
 ## 1.0.0
 
 * flutter_queue_it's API is now stable: breaking changes only come with a new major version. New
-  `QueueEvent`s may still come in minor versions.
+  `QueueEvent`s, members and optional parameters may still come in minor versions.
 * BREAKING CHANGE: requires queue_it 1.0.0, where an item's `status`, `error` and `stackTrace` are
   read-only, `items.cancelled` and `OnUpdateCallback` are gone, and `QueueEvent.cancelledAll` is
   now `canceledAll`. See its changelog.
@@ -13,8 +13,8 @@
   wait for the end of that frame, as they do in debug builds. Before, a `QueueItListener` was
   called in the middle of the build, and a `QueueItWidget` whose builder changed the queue
   didn't rebuild for it.
-* Docs: the README's example imports the `material_ui` package, which Flutter 3.50 uses in place
-  of `package:flutter/material.dart`.
+* Docs: the README's example imports the `material_ui` package, which replaces
+  `package:flutter/material.dart`, deprecated in Flutter 3.50.
 * Docs: the README and pub.dev page show the example app.
 * Example: the example app is now a photo uploader. It uses `material_ui`, so it needs Flutter 3.47
   or later, and it builds with Flutter 3.50. The package itself still supports Flutter 3.24.

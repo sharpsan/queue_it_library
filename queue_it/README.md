@@ -174,10 +174,11 @@ queue.cancelById(id);
 queue.removeById(id);
 ```
 
-An item that's already processing can't be interrupted, so its handler keeps running, but QueueIt
-ignores the result and won't retry it. If your handler does a lot of work, it can check
-`item.status` to stop early. `cancel` and `remove` take an item instead of an id, including the
-copies you get in snapshots, and `cancelAll` and `removeAll` work on every item.
+An item that's already processing can't be interrupted, so its handler keeps running, and counts
+towards `parallel` until it returns, but QueueIt ignores the result and won't retry it. If your
+handler does a lot of work, it can check `item.status` to stop early. `cancel` and `remove` take
+an item instead of an id, including the copies you get in snapshots, and `cancelAll` and
+`removeAll` work on every item.
 
 ### Waiting for an item
 
@@ -208,14 +209,14 @@ queue.onUpdate.listen((snapshot) {
 });
 ```
 
-Every failed attempt sends a `failed` update, including the ones that will be retried. New events
-may come in minor versions, so in a `switch` over `snapshot.event`, handle the ones you need and use
-a default case for the rest.
+Every failed attempt sends a `failed` update, including the ones that will be retried. To act once
+an item has failed for good, use `waitFor`. New events may come in minor versions, so in a `switch`
+over `snapshot.event`, handle the ones you need and use a default case for the rest.
 
 `snapshot.items` holds the items of the current batch. These are the queue's own items, so they keep
 changing after the update. If you need them as they were at the time, create the queue with
 `deepCopyItemsInSnapshot: true`, but copying them costs time on every update, especially for big
-batches.
+batches. So does counting them: `length`, `progress` and `summary` go through the whole batch.
 
 ### Batches
 
@@ -228,12 +229,14 @@ the queue until you remove them.
 
 `add` returns the item's id. It's a UUID, unless you pass your own with `queue.add(data, id: 'my-id')`.
 Ids must be unique within the queue. Set `useFriendlyIds: true` for readable ids like
-`big wizard cat`.
+`big wizard cat`. There are only a few hundred of those, so the id of a removed item can come up
+again.
 
 ### Disposing
 
 Call `dispose()` when you're done with a queue. It stops the queue and closes `onUpdate`. Handlers
-that are still running aren't interrupted, but their results are ignored.
+that are still running aren't interrupted, but their results are ignored, and `waitFor` futures
+that are still waiting fail with a `StateError`.
 
 For a more in-depth look at how to use QueueIt, check out the
 [example project](https://pub.dev/packages/queue_it/example).
@@ -242,13 +245,15 @@ For a more in-depth look at how to use QueueIt, check out the
 
 - An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
   use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
-  handler returns, set `item.nextStatus` in the handler.
+  handler returns, set `item.nextStatus` in the handler. To fail an item with an error, throw it
+  from the handler.
 - Items you make yourself, for example in tests, get their status from the constructor, which
   records when they got there, and their `error` and `stackTrace` from `copyWith`:
   `QueueItem(data: 'a', batchId: 'b', status: QueueItemStatus.failed).copyWith(error: e)`.
 - `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
   and listen to `queue.onUpdate` for updates. If you used `OnUpdateCallback` as a type, declare
-  your own.
+  your own:
+  `typedef OnUpdateCallback<T> = void Function(QueueItemStatus status, QueueItem<T> item);`
 - `nextStatus` only counts when it's set while the item is processing, usually by its handler. A
   value set before then, for example on a pending item, is ignored.
 - `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
@@ -271,7 +276,7 @@ These come on top of the changes from 0.10 above.
 - Canceled and removed items now stay that way, even if they were processing at the time.
 - `onUpdate` listeners can now call the queue. If you delayed those calls to get around the
   `Cannot fire new event` error, you don't need to anymore.
-- `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is deprecated.
+- `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is gone.
 - QueueIt now requires Dart 3.5 or later.
 
 If QueueIt is useful to you, give it a like on [pub.dev](https://pub.dev/packages/queue_it).

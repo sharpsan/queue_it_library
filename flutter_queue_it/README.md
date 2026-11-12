@@ -167,9 +167,9 @@ widget is being removed, the listener isn't called any more.
   while Flutter is building, for example from a widget's `initState` or `dispose`, rebuild the
   widget right after that frame.
 - `snapshot.event` tells you what happened, and `snapshot.eventItem` is a copy of the item the
-  update is about, taken at that moment. `snapshot.items` holds the queue's own items, so they show
-  each item's current status (and leave out the ones removed since), unless the queue was created
-  with `deepCopyItemsInSnapshot: true`.
+  update is about, taken at that moment. `snapshot.items` holds the current batch's items, the
+  queue's own, so they show each item's current status (and leave out the ones removed since),
+  unless the queue was created with `deepCopyItemsInSnapshot: true`.
 - The widgets never start, stop or dispose of the queue. Keep the queue somewhere that outlives
   rebuilds, like a `State`, and call `dispose()` on it when you're done.
 - Any number of widgets can listen to the same queue, such as a list and a counter in the app bar.
