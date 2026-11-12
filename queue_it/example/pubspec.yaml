@@ -1,5 +1,5 @@
 name: queue_it_example
-description: A sample command-line application.
+description: A command-line example of queue_it.
 version: 1.0.0
 publish_to: "none"
 
