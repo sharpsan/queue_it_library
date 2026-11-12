@@ -205,6 +205,74 @@ void main() {
     expect(errors, hasLength(4));
   });
 
+  test('willRetry tells a failure that will be retried from the last one',
+      () async {
+    final queue = QueueIt<int>(
+      retries: 2,
+      // Item 2 isn't retried, though it has retries left.
+      retryIf: (item, error) => item.data != 2,
+      itemHandler: (item) {
+        if (item.data != 3 || item.retryCount < 1) throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    final seen = <String>[];
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item != null && snapshot.event == QueueEvent.itemStatusUpdated) {
+        seen.add('${item.data}:${item.status.name}:${item.retryCount}'
+            '${snapshot.willRetry ? ':willRetry' : ''}');
+      } else {
+        expect(snapshot.willRetry, isFalse, reason: snapshot.event.name);
+      }
+    });
+    queue
+      ..add(1)
+      ..add(2)
+      ..add(3)
+      ..start();
+    await queue.running;
+
+    expect(seen, [
+      '1:processing:0',
+      '1:failed:0:willRetry',
+      '1:pending:1',
+      '1:processing:1',
+      '1:failed:1:willRetry',
+      '1:pending:2',
+      '1:processing:2',
+      '1:failed:2',
+      '2:processing:0',
+      '2:failed:0',
+      '3:processing:0',
+      '3:failed:0:willRetry',
+      '3:pending:1',
+      '3:processing:1',
+      '3:completed:1',
+    ]);
+  });
+
+  test('willRetry is true for a retry that waits for its delay', () async {
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    final failures = <bool>[];
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.eventItem?.status == QueueItemStatus.failed) {
+        failures.add(snapshot.willRetry);
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    expect(failures, [true, false]);
+  });
+
   test('retryIf gets the item that failed', () async {
     final asked = <String>[];
     final queue = QueueIt<int>(

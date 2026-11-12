@@ -24,6 +24,29 @@ void main() {
       );
     });
 
+    test("look up the queue's own item with itemById", () async {
+      final queue = QueueIt<int>(itemHandler: (item) {});
+      addTearDown(queue.dispose);
+      queue
+        ..add(1, id: 'one')
+        ..add(2, id: 'two');
+
+      final item = queue.itemById('two');
+      expect(item, same(queue.items().last));
+      expect(queue.itemById('three'), isNull);
+
+      // It's the live item, so it keeps up with the queue.
+      queue.start();
+      await queue.running;
+      expect(item!.status, QueueItemStatus.completed);
+
+      queue.remove(item);
+      expect(queue.itemById('two'), isNull);
+      expect(queue.itemById('one')!.data, 1);
+      queue.removeAll();
+      expect(queue.itemById('one'), isNull);
+    });
+
     test('must be unique', () {
       final queue = QueueIt<int>(itemHandler: (item) {});
       addTearDown(queue.dispose);
@@ -675,6 +698,7 @@ void main() {
     ]);
     expect(queue.items().single.toString(), contains('Error: Exception: oops'));
     expect(snapshots.first.toString(), contains('Event: itemAdded'));
+    expect(snapshots.first.toString(), contains('Will Retry: false'));
     expect(queue.items().single.summaryTableLine, startsWith('failed'));
   });
 
@@ -709,6 +733,135 @@ void main() {
       expect(<QueueItem<int>>[].progress, 1);
       expect(items.summary, contains('Failed: 1'));
       expect(items.summary, contains('Canceled: 1'));
+    });
+
+    test("counts the queue's items as they change, without going through them",
+        () async {
+      final gate = Gate<int>();
+      final queue =
+          QueueIt<int>(parallel: 2, retries: 1, itemHandler: gate.call);
+      addTearDown(queue.dispose);
+
+      /// The counts the views give, which must be what going through the
+      /// items gives.
+      String counts(Iterable<QueueItem<int>> items) {
+        final walked = items.toList();
+        final byStatus = {
+          'pending': items.pending,
+          'processing': items.processing,
+          'completed': items.completed,
+          'failed': items.failed,
+          'canceled': items.canceled,
+        };
+        for (final MapEntry(key: name, value: view) in byStatus.entries) {
+          final expected =
+              walked.where((item) => item.status.name == name).toList();
+          expect(view.length, expected.length, reason: name);
+          expect(view.isEmpty, expected.isEmpty, reason: name);
+          expect(view.isNotEmpty, expected.isNotEmpty, reason: name);
+          expect(view.toList(), expected, reason: name);
+        }
+        expect(items.length, walked.length);
+        expect(items.isEmpty, walked.isEmpty);
+        expect(items.isNotEmpty, walked.isNotEmpty);
+        expect(items.progress, walked.progress);
+        expect(items.summary, walked.summary);
+        return [
+          items.length,
+          for (final view in byStatus.values) view.length,
+        ].join(' ');
+      }
+
+      /// Total, pending, processing, completed, failed and canceled: of all
+      /// the items, and of the current batch.
+      List<String> both() => [
+            counts(queue.items()),
+            counts(queue.currentBatchItems),
+          ];
+
+      expect(both(), ['0 0 0 0 0 0', '0 0 0 0 0 0']);
+      for (var i = 1; i <= 5; i++) {
+        queue.add(i, id: '$i');
+      }
+      expect(both(), ['5 5 0 0 0 0', '5 5 0 0 0 0']);
+
+      queue.start();
+      await wait();
+      expect(both(), ['5 3 2 0 0 0', '5 3 2 0 0 0']);
+
+      gate.release(1);
+      await wait();
+      expect(both(), ['5 2 2 1 0 0', '5 2 2 1 0 0']);
+
+      // Item 2 fails and is retried before the items waiting, and fails for
+      // good.
+      gate.release(2, Exception('failed'));
+      await wait();
+      expect(both(), ['5 2 2 1 0 0', '5 2 2 1 0 0']);
+      gate.release(2, Exception('failed'));
+      await wait();
+      expect(both(), ['5 1 2 1 1 0', '5 1 2 1 1 0']);
+
+      // Canceling a waiting item and one that's processing, and removing one.
+      queue.cancelById('5');
+      expect(both(), ['5 0 2 1 1 1', '5 0 2 1 1 1']);
+      queue.cancelById('3');
+      expect(both(), ['5 0 1 1 1 2', '5 0 1 1 1 2']);
+      queue.removeById('5');
+      expect(both(), ['4 0 1 1 1 1', '4 0 1 1 1 1']);
+      gate.release(4);
+      await wait();
+      expect(both(), ['4 0 0 2 1 1', '4 0 0 2 1 1']);
+
+      // A new batch starts counting again, and the queue goes on counting
+      // all its items.
+      final firstBatch = queue.currentBatchId;
+      queue.add(6, id: '6');
+      expect(both(), ['5 1 0 2 1 1', '1 1 0 0 0 0']);
+      expect(counts(queue.items(firstBatch)), '4 0 0 2 1 1');
+      await wait();
+      expect(both(), ['5 0 1 2 1 1', '1 0 1 0 0 0']);
+
+      // Removing an item of an earlier batch leaves the current one alone.
+      queue.removeById('1');
+      expect(both(), ['4 0 1 1 1 1', '1 0 1 0 0 0']);
+      queue.cancelAll();
+      expect(both(), ['4 0 0 1 1 2', '1 0 0 0 0 1']);
+      queue.removeAll();
+      expect(both(), ['0 0 0 0 0 0', '0 0 0 0 0 0']);
+      queue.add(7);
+      expect(both(), ['1 1 0 0 0 0', '1 1 0 0 0 0']);
+    });
+
+    test('counts a big batch on every update without slowing down', () async {
+      /// How long a queue takes to process [count] items when a listener
+      /// reads the counts on every update.
+      Future<Duration> process(int count) async {
+        final queue = QueueIt<int>(parallel: 4, itemHandler: (item) {});
+        addTearDown(queue.dispose);
+        var read = 0;
+        queue.onUpdate.listen((snapshot) {
+          final items = snapshot.items;
+          read += items.length + items.completed.length;
+          if (items.progress > 1 || items.summary.isEmpty) read++;
+          read += queue.items().length + queue.items().pending.length;
+        });
+        for (var i = 0; i < count; i++) {
+          queue.add(i);
+        }
+        final watch = Stopwatch()..start();
+        queue.start();
+        await queue.running;
+        expect(read, greaterThan(count));
+        return watch.elapsed;
+      }
+
+      // Warm up, then compare: going through the items on every update
+      // would take 16 times as long for 4 times the items.
+      await process(2000);
+      final small = await process(2000);
+      final big = await process(8000);
+      expect(big.inMicroseconds, lessThan(small.inMicroseconds * 10 + 50000));
     });
 
     test('keeps the progress short of 1 while items are left', () {

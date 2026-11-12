@@ -209,12 +209,11 @@ class _UploadsPageState extends State<UploadsPage> {
   /// Tells the user when a photo has run out of retries.
   void _showFailure(BuildContext context, QueueSnapshot<Photo> snapshot) {
     final item = snapshot.eventItem;
-    // Every failed attempt sends a failed status, and this queue retries every
-    // error, so only the attempt with no retries left stays. With a retryIf,
-    // an item can fail for good sooner: waitFor tells you when.
+    // Every failed attempt sends a failed status. willRetry tells the ones
+    // that will be retried from the one that stays.
     if (item == null ||
         item.status != QueueItemStatus.failed ||
-        item.retryCount < _queue.retries) {
+        snapshot.willRetry) {
       return;
     }
     _failureShown = item.id;

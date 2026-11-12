@@ -145,6 +145,10 @@ Future<void> _run(int seed) async {
             !(useRetryIf && item.error is _Fatal)) {
           retrying.add(item.id);
         }
+        if (snapshot.willRetry != retrying.contains(item.id)) {
+          problems.add('${item.id} ${item.status} with ${item.retryCount} '
+              'retries said willRetry ${snapshot.willRetry}');
+        }
         if (!_transitions[from]!.contains(item.status)) {
           problems.add('${item.id} went from $from to ${item.status}');
         }
@@ -165,6 +169,43 @@ Future<void> _run(int seed) async {
       case QueueEvent.removedAll:
         statuses.updateAll((id, status) => QueueItemStatus.removed);
         retrying.clear();
+    }
+    if (item == null && snapshot.willRetry) {
+      problems.add('${snapshot.event.name} said willRetry');
+    }
+    final views = {
+      'items': queue.items(),
+      'the batch': queue.currentBatchItems,
+      'the snapshot': snapshot.items,
+    };
+    for (final MapEntry(key: name, value: view) in views.entries) {
+      final walked = view.toList();
+      final counted = [
+        view.length,
+        view.pending.length,
+        view.processing.length,
+        view.completed.length,
+        view.failed.length,
+        view.canceled.length,
+      ];
+      final expected = [
+        walked.length,
+        for (final status in QueueItemStatus.values.take(5))
+          walked.where((item) => item.status == status).length,
+      ];
+      if ('$counted' != '$expected') {
+        problems.add('${snapshot.event.name}: $name counted $counted, '
+            'not $expected');
+      }
+      if (name == 'the batch' &&
+          walked.any((item) => item.batchId != queue.currentBatchId)) {
+        problems.add('${snapshot.event.name}: $name has another batch');
+      }
+    }
+    if (item != null &&
+        queue.itemById(item.id)?.id !=
+            (queue.hasItemById(item.id) ? item.id : null)) {
+      problems.add('${snapshot.event.name}: itemById is wrong for ${item.id}');
     }
     if (snapshot.isStarted != isStarted) {
       problems

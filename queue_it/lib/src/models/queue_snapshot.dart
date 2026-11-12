@@ -28,13 +28,19 @@ class QueueSnapshot<T> {
   /// or null for events about the whole queue.
   final QueueItem<T>? eventItem;
 
+  /// Whether the queue is about to retry [eventItem]: true in the `failed`
+  /// update of an attempt that will be retried, unless a listener cancels or
+  /// removes the item. When an item's `failed` update has it false, the item
+  /// has failed for good.
+  final bool willRetry;
+
   /// The items in the queue's current batch.
   ///
   /// Unless the queue was created with `deepCopyItemsInSnapshot: true`, this
   /// is a live view of the queue's items: iterating it later shows the items
   /// as they are then, and adding or removing items while iterating it
   /// throws a [ConcurrentModificationError]. Copy it with `toList()` to keep
-  /// it.
+  /// it. The live view counts its items without going through them.
   final Iterable<QueueItem<T>> items;
 
   /// When the queue was last started.
@@ -58,6 +64,7 @@ class QueueSnapshot<T> {
     s.writeln('Processing: $isProcessing');
     s.writeln('Current Batch Id: $currentBatchId');
     s.writeln('Event Item: ${eventItem?.data}');
+    s.writeln('Will Retry: $willRetry');
     s.writeln('Items: ${items.map((e) => e.data).toList()}');
     s.writeln('Started At: $startedAt');
     s.writeln('Started Processing At: $startedProcessingAt');
@@ -74,6 +81,7 @@ class QueueSnapshot<T> {
     required this.isProcessing,
     required this.currentBatchId,
     required this.eventItem,
+    this.willRetry = false,
     required this.items,
     required this.startedAt,
     required this.startedProcessingAt,

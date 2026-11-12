@@ -70,6 +70,11 @@ class QueueIt<T> {
   final _items = LinkedList<_ItemEntry<T>>();
   final _itemsById = <String, _ItemEntry<T>>{};
 
+  /// How many items have each status, among all of them and in the current
+  /// batch, so that counting them doesn't go through the list.
+  final _counts = _StatusCounts();
+  final _batchCounts = _StatusCounts();
+
   /// The items waiting to be processed, and each one's place among them.
   /// Retries go first, in the order they're due, then the other items in
   /// order. Items leave as soon as they're canceled or removed.
@@ -207,9 +212,12 @@ class QueueIt<T> {
   ///
   /// These are the queue's live items, in a lazy view of its list: copy it
   /// with `toList()` before adding or removing items while iterating it.
-  Iterable<QueueItem<T>> items([String? batchId]) => batchId == null
-      ? _items.map((entry) => entry.item)
-      : _BatchItems(this, batchId);
+  ///
+  /// Counting all the items, or the current batch's, takes no time however
+  /// many there are: `length`, and the counts, `progress` and `summary` of
+  /// `QueueItemsExtension`, such as `items().completed.length`.
+  Iterable<QueueItem<T>> items([String? batchId]) =>
+      batchId == null ? _AllItems(this) : _BatchItems(this, batchId);
 
   /// A snapshot of the queue for every change, sent synchronously.
   ///
@@ -281,7 +289,9 @@ class QueueIt<T> {
   /// Whether the queue has an item with [id].
   bool hasItemById(String id) => _itemsById.containsKey(id);
 
-  QueueItem<T>? _itemById(String id) => _itemsById[id]?.item;
+  /// The queue's item with [id], or null if it has none, which includes an
+  /// item that was removed. It's the queue's live item.
+  QueueItem<T>? itemById(String id) => _itemsById[id]?.item;
 
   /// Adds an item with [data] to the end of the queue and returns its id.
   ///
@@ -300,6 +310,7 @@ class QueueIt<T> {
     if (!_hasUnfinishedItems()) {
       _currentBatchId = const Uuid().v4();
       _batchStart = null;
+      _batchCounts.clear();
     }
 
     final item = QueueItem(
@@ -313,6 +324,8 @@ class QueueIt<T> {
     _itemChanges++;
     _itemsById[item.id] = entry;
     _batchStart ??= entry;
+    _counts.add(item.status);
+    _batchCounts.add(item.status);
     _enqueue(item);
     if (_isStarted) _hasHadItems = true;
     _sendOnUpdateEvent(QueueEvent.itemAdded, item);
@@ -330,7 +343,7 @@ class QueueIt<T> {
 
   /// Removes the item with [id]. Returns whether there was one. See [remove].
   bool removeById(String id) {
-    final item = _itemById(id);
+    final item = itemById(id);
     if (item == null) return false;
     _remove(item);
     _schedulePump();
@@ -345,6 +358,8 @@ class QueueIt<T> {
     _itemChanges++;
     _batchStart = null;
     _itemsById.clear();
+    _counts.clear();
+    _batchCounts.clear();
     _waitingRetries.clear();
     _waiting.clear();
     _waitingEntries.clear();
@@ -376,7 +391,7 @@ class QueueIt<T> {
   /// Cancels the item with [id]. Returns whether it was canceled. See
   /// [cancel].
   bool cancelById(String id) {
-    final item = _itemById(id);
+    final item = itemById(id);
     if (item == null || !_cancel(item)) return false;
     _notifyWaiters(item);
     _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
@@ -407,7 +422,7 @@ class QueueIt<T> {
   /// with [id], which includes an item removed before the call, and with a
   /// [StateError] if the queue is disposed before the item finishes.
   Future<QueueItem<T>> waitFor(String id) {
-    final item = _itemById(id);
+    final item = itemById(id);
     if (item == null) {
       return Future.error(
           ArgumentError.value(id, 'id', 'The queue has no item with this id'));
@@ -537,7 +552,7 @@ class QueueIt<T> {
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
-    item.updateStatus(QueueItemStatus.canceled);
+    _updateStatus(item, QueueItemStatus.canceled);
     return true;
   }
 
@@ -546,12 +561,26 @@ class QueueIt<T> {
     if (identical(entry, _batchStart)) _batchStart = entry.next;
     entry.unlink();
     _itemChanges++;
+    _counts.remove(item.status);
+    if (item.batchId == _currentBatchId) _batchCounts.remove(item.status);
     _retrying.remove(item);
     _unqueue(item);
     _retryTimers.remove(item.id)?.cancel();
     item.updateStatus(QueueItemStatus.removed);
     _notifyWaiters(item);
     _sendOnUpdateEvent(QueueEvent.itemRemoved, item);
+  }
+
+  /// Changes the status of [item], which is in the queue, and the counts
+  /// with it. Only unfinished items change, and those are all in the current
+  /// batch.
+  void _updateStatus(QueueItem<T> item, QueueItemStatus status) {
+    assert(item.batchId == _currentBatchId);
+    _counts.remove(item.status);
+    _batchCounts.remove(item.status);
+    item.updateStatus(status);
+    _counts.add(status);
+    _batchCounts.add(status);
   }
 
   /// Completes the [waitFor] futures for [item], which has finished. It's
@@ -636,9 +665,8 @@ class QueueIt<T> {
     // before its handler starts.
     if (_isStarted && item.status == QueueItemStatus.pending) {
       // A nextStatus set while the item waited doesn't decide this attempt.
-      item
-        ..nextStatus = null
-        ..updateStatus(QueueItemStatus.processing);
+      item.nextStatus = null;
+      _updateStatus(item, QueueItemStatus.processing);
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
     } else if (item.status == QueueItemStatus.pending) {
       _enqueue(item, retry: waiting.isRetry, first: true);
@@ -681,19 +709,19 @@ class QueueIt<T> {
     }
     switch (nextStatus) {
       case null || QueueItemStatus.completed:
-        item.updateStatus(QueueItemStatus.completed);
+        _updateStatus(item, QueueItemStatus.completed);
         _notifyWaiters(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.failed:
         _fail(item, null, null);
       case QueueItemStatus.canceled:
-        item.updateStatus(QueueItemStatus.canceled);
+        _updateStatus(item, QueueItemStatus.canceled);
         _notifyWaiters(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.removed:
         _remove(item);
       case QueueItemStatus.pending:
-        item.updateStatus(QueueItemStatus.pending);
+        _updateStatus(item, QueueItemStatus.pending);
         _enqueue(item);
         _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
       case QueueItemStatus.processing:
@@ -711,9 +739,8 @@ class QueueIt<T> {
     // retryIf or retryDelay canceled or removed the item, or disposed the
     // queue.
     if (_isDisposing || item.status != QueueItemStatus.processing) return;
-    item
-      ..recordError(error, stackTrace)
-      ..updateStatus(QueueItemStatus.failed);
+    item.recordError(error, stackTrace);
+    _updateStatus(item, QueueItemStatus.failed);
     if (delay == null) {
       _notifyWaiters(item);
       _sendOnUpdateEvent(QueueEvent.itemStatusUpdated, item);
@@ -731,7 +758,7 @@ class QueueIt<T> {
     // A listener canceled or removed it.
     if (item.status != QueueItemStatus.failed) return;
 
-    item.updateStatus(QueueItemStatus.pending);
+    _updateStatus(item, QueueItemStatus.pending);
     // A listener disposed the queue. The item stays pending, like the other
     // items that were waiting.
     if (_isDisposing) return;
@@ -785,6 +812,7 @@ class QueueIt<T> {
         isProcessing: _isProcessing,
         currentBatchId: _currentBatchId,
         eventItem: item?.copyWith(),
+        willRetry: item != null && _retrying.contains(item),
         items: deepCopyItemsInSnapshot
             ? currentBatchItems.map((e) => e.copyWith()).toList()
             : currentBatchItems,
@@ -825,19 +853,77 @@ final class _WaitingItem<T> extends LinkedListEntry<_WaitingItem<T>> {
   final bool isRetry;
 }
 
+/// How many items have each status.
+class _StatusCounts {
+  final _byStatus = List.filled(QueueItemStatus.values.length, 0);
+  var total = 0;
+
+  int operator [](QueueItemStatus status) => _byStatus[status.index];
+
+  void add(QueueItemStatus status) {
+    _byStatus[status.index]++;
+    total++;
+  }
+
+  void remove(QueueItemStatus status) {
+    _byStatus[status.index]--;
+    total--;
+  }
+
+  void clear() {
+    _byStatus.fillRange(0, _byStatus.length, 0);
+    total = 0;
+  }
+}
+
+/// All the queue's items: a lazy view of its list, which knows its counts.
+class _AllItems<T> extends Iterable<QueueItem<T>> implements CountedItems {
+  _AllItems(this._queue);
+
+  final QueueIt<T> _queue;
+
+  @override
+  Iterator<QueueItem<T>> get iterator =>
+      _queue._items.map((entry) => entry.item).iterator;
+
+  @override
+  int get length => _queue._counts.total;
+
+  @override
+  bool get isEmpty => length == 0;
+
+  @override
+  bool get isNotEmpty => length != 0;
+
+  @override
+  int? countWithStatus(QueueItemStatus status) => _queue._counts[status];
+}
+
 /// The items of a batch: a lazy view of the queue's items. The current batch
 /// is the end of the list, so finding it doesn't go through the earlier
-/// batches.
-class _BatchItems<T> extends Iterable<QueueItem<T>> {
+/// batches, and it knows its counts.
+class _BatchItems<T> extends Iterable<QueueItem<T>> implements CountedItems {
   _BatchItems(this._queue, this._batchId);
 
   final QueueIt<T> _queue;
   final String _batchId;
 
+  bool get _isCurrent => _batchId == _queue._currentBatchId;
+
   @override
-  Iterator<QueueItem<T>> get iterator => _batchId == _queue._currentBatchId
+  Iterator<QueueItem<T>> get iterator => _isCurrent
       ? _CurrentBatchIterator(_queue)
-      : _queue.items().where((item) => item.batchId == _batchId).iterator;
+      : _queue._items
+          .map((entry) => entry.item)
+          .where((item) => item.batchId == _batchId)
+          .iterator;
+
+  @override
+  int get length => _isCurrent ? _queue._batchCounts.total : super.length;
+
+  @override
+  int? countWithStatus(QueueItemStatus status) =>
+      _isCurrent ? _queue._batchCounts[status] : null;
 }
 
 /// Goes through the current batch from its first item. Like a list's

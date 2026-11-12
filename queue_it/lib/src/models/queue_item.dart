@@ -203,6 +203,15 @@ class QueueItem<T> {
   }
 }
 
+/// Items that may know how many of them have each status without going
+/// through them, as the queue's own views of its items do. The public library
+/// hides it.
+abstract interface class CountedItems {
+  /// How many of the items have [status], or null if finding out means going
+  /// through them.
+  int? countWithStatus(QueueItemStatus status);
+}
+
 /// How the queue changes its items. The public library hides it, so only the
 /// queue changes an item.
 extension QueueItemUpdates<T> on QueueItem<T> {
