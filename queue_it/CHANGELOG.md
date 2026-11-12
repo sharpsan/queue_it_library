@@ -14,6 +14,8 @@
 * Fix: `nextStatus` only counts when it's set while the item is processing, usually by its
   handler. The queue clears it as the item starts processing, so a value set before then no
   longer decides the attempt's outcome.
+* Fix: a long run of handlers returning a future that calls back right away, such as Flutter's
+  `SynchronousFuture`, no longer overflows the stack and leaves the queue stuck.
 
 ## 0.10.1
 

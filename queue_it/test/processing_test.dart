@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:queue_it/queue_it.dart';
 import 'package:test/test.dart';
 
@@ -278,6 +280,38 @@ void main() {
 
     expect(queue.isProcessing, isFalse);
     expect(queue.items().failed, hasLength(20000));
+  });
+
+  test("settles a microtask later when the handler's future calls back at once",
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) => _SynchronousFuture());
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    // Whether an item finished, or the next one started, inside `then`.
+    var insideThen = false;
+    queue.onUpdate.listen((snapshot) {
+      if (_SynchronousFuture.calling > 0) insideThen = true;
+    });
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+
+    await queue.running;
+
+    expect(insideThen, isFalse);
+    expect(events, [
+      'itemAdded:1:pending',
+      'itemAdded:2:pending',
+      'startedQueue',
+      'startedProcessing',
+      'itemStatusUpdated:1:processing',
+      'itemStatusUpdated:1:completed',
+      'itemStatusUpdated:2:processing',
+      'itemStatusUpdated:2:completed',
+      'stoppedProcessing',
+      'stoppedQueue',
+    ]);
   });
 
   test('processes an item added as processing stops', () async {
@@ -603,4 +637,26 @@ void main() {
     expect(started, isEmpty);
     expect(queue.isProcessing, isFalse);
   });
+}
+
+/// A future that calls back before `then` returns, as Flutter's
+/// SynchronousFuture does.
+class _SynchronousFuture implements Future<void> {
+  /// How many `then` calls are running.
+  static var calling = 0;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(void value) onValue,
+      {Function? onError}) {
+    calling++;
+    try {
+      final result = onValue(null);
+      return result is Future<R> ? result : Future<R>.value(result);
+    } finally {
+      calling--;
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

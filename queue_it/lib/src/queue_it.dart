@@ -647,10 +647,11 @@ class QueueIt<T> {
     Object? error;
     StackTrace? stackTrace;
     try {
-      // A handler that throws right away still settles a microtask later, as
-      // one that returns does. Otherwise a run of such failures would start
-      // each next item deeper on the stack.
-      await Future<void>.sync(() => itemHandler(item));
+      // The outcome always arrives a microtask later, even when the handler
+      // throws right away or its future calls back at once, as Flutter's
+      // SynchronousFuture does. Otherwise a run of such items would start each
+      // next item deeper on the stack.
+      await Future<void>.value(Future<void>.sync(() => itemHandler(item)));
     } catch (e, s) {
       error = e;
       stackTrace = s;
