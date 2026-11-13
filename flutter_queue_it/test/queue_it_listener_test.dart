@@ -1,5 +1,8 @@
 import 'dart:async';
 
+// The SnackBar tests need Material. flutter_queue_it supports Flutter
+// versions from before the material_ui package, so they use the framework's.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,6 +96,60 @@ void main() {
     queue.stop();
   });
 
+  testWidgets('lets the listener call the queue for events sent during a build',
+      (tester) async {
+    Widget build({required bool withChildren}) => QueueItListener<String>(
+          queue: queue,
+          listener: (context, snapshot) {
+            final item = snapshot.eventItem!;
+            events.add('${item.data}:${item.status.name}');
+            // Cancels the first item added, and adds a replacement.
+            if (item.data == 'first' &&
+                item.status == QueueItemStatus.pending) {
+              queue
+                ..cancelById(item.id)
+                ..add('replacement');
+            }
+          },
+          child: Column(children: [
+            if (withChildren) ...[
+              _Lifecycle(onInit: () => queue.add('first')),
+              _Lifecycle(onInit: () => queue.add('second')),
+            ],
+          ]),
+        );
+    await tester.pumpWidget(build(withChildren: false));
+
+    await tester.pumpWidget(build(withChildren: true));
+
+    // What the listener causes comes after the events already waiting.
+    expect(events, [
+      'first:pending',
+      'second:pending',
+      'first:canceled',
+      'replacement:pending',
+    ]);
+
+    // And later events go straight to the listener again.
+    queue.add('later');
+    expect(events.last, 'later:pending');
+  });
+
+  testWidgets('schedules a frame for an event sent in a build outside a frame',
+      (tester) async {
+    await tester.pumpWidget(listener(queue));
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    final element = tester.element(find.byType(QueueItListener<String>));
+
+    tester.binding.buildOwner!.buildScope(element, () => queue.add('a'));
+
+    expect(events, isEmpty);
+    // Nothing else asked for a frame, and the event waits for one.
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    expect(events, ['itemAdded:a:pending']);
+  });
+
   testWidgets('listens to the new queue when the queue changes',
       (tester) async {
     final other = QueueIt<String>(itemHandler: (item) {});
@@ -107,11 +164,17 @@ void main() {
   });
 
   testWidgets('stops listening when removed', (tester) async {
-    await tester.pumpWidget(listener(queue));
+    final watched = _WatchedQueue()..start(stopAutomatically: false);
+    addTearDown(watched.dispose);
+    await tester.pumpWidget(listener(watched));
+    expect(watched.listeners, 1);
+
     await tester.pumpWidget(const SizedBox());
 
-    queue.add('a');
-
+    expect(watched.listeners, 0);
+    // The queue isn't the widget's to stop.
+    expect(watched.isStarted, isTrue);
+    watched.add('a');
     expect(events, isEmpty);
   });
 
@@ -346,6 +409,47 @@ void main() {
     expect(events, ['new:during', 'new:after']);
   });
 
+  testWidgets('reports a listener that throws, and carries on', (tester) async {
+    await tester.pumpWidget(QueueItListener<String>(
+      queue: queue,
+      listener: (context, snapshot) {
+        events.add('${snapshot.eventItem?.data}');
+        if (snapshot.eventItem?.data == 'throws') {
+          throw StateError('listener failed');
+        }
+      },
+      child: const SizedBox(),
+    ));
+
+    queue.add('throws');
+    expect(tester.takeException(), isStateError);
+    queue.add('next');
+    expect(events, ['throws', 'next']);
+  });
+
+  testWidgets('reports what the listener throws with its stack and context',
+      (tester) async {
+    await tester.pumpWidget(QueueItListener<String>(
+      queue: queue,
+      listener: (context, snapshot) => throw StateError('oops'),
+      child: const SizedBox(),
+    ));
+    final reported = <FlutterErrorDetails>[];
+    final onError = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    try {
+      queue.add('a');
+    } finally {
+      FlutterError.onError = onError;
+    }
+
+    final details = reported.single;
+    expect(details.exception, isStateError);
+    expect(details.stack.toString(), contains('queue_it_listener_test.dart'));
+    expect(details.library, 'flutter_queue_it');
+    expect(details.context!.toDescription(), 'while calling a QueueItListener');
+  });
+
   testWidgets(
       'reports a listener that throws for an event sent during a '
       'move, and carries on', (tester) async {
@@ -383,6 +487,61 @@ void main() {
     expect(disposes, 1);
     queue.add('gone');
     expect(events, ['throws', 'next', 'after']);
+  });
+
+  testWidgets('carries on when FlutterError.onError throws', (tester) async {
+    Widget listener(String name) => QueueItListener<String>(
+          queue: queue,
+          listener: (context, snapshot) {
+            final data = snapshot.eventItem?.data;
+            events.add('$name:$data');
+            if (data == 'throws') throw StateError('listener failed');
+          },
+          child: const SizedBox(),
+        );
+    final onError = FlutterError.onError;
+    FlutterError.onError = (details) => throw details.exception;
+    final zoneErrors = <Object>[];
+    try {
+      await runZonedGuarded(() async {
+        // Errors don't leave the zone through its future, so catch them here,
+        // or a failure would hang the test.
+        try {
+          await tester
+              .pumpWidget(Column(children: [listener('a'), listener('b')]));
+
+          /// Sent while Flutter builds, so held back until after the frame
+          await tester.pumpWidget(Column(children: [
+            listener('a'),
+            listener('b'),
+            _Lifecycle(
+                onInit: () => queue
+                  ..add('throws')
+                  ..add('next')),
+          ]));
+
+          /// Sent right away
+          queue.add('throws');
+        } catch (error) {
+          zoneErrors.add(error);
+        }
+      }, (error, stack) => zoneErrors.add(error));
+    } finally {
+      FlutterError.onError = onError;
+    }
+
+    queue.add('after');
+    expect(events, [
+      'a:throws',
+      'a:next',
+      'b:throws',
+      'b:next',
+      'a:throws',
+      'b:throws',
+      'a:after',
+      'b:after',
+    ]);
+    expect(zoneErrors, hasLength(4));
   });
 
   testWidgets("drops the old queue's events when moved and given a new queue",
@@ -492,6 +651,32 @@ void main() {
 
     expect(events, ['itemAdded']);
   });
+}
+
+/// A queue that counts the listeners of its updates.
+class _WatchedQueue extends QueueIt<String> {
+  _WatchedQueue() : super(itemHandler: (item) {});
+
+  var listeners = 0;
+
+  @override
+  Stream<QueueSnapshot<String>> get onUpdate {
+    final updates = super.onUpdate;
+    late final StreamSubscription<QueueSnapshot<String>> subscription;
+    late final StreamController<QueueSnapshot<String>> controller;
+    controller = StreamController(
+      sync: true,
+      onListen: () {
+        listeners++;
+        subscription = updates.listen(controller.add);
+      },
+      onCancel: () {
+        listeners--;
+        return subscription.cancel();
+      },
+    );
+    return controller.stream;
+  }
 }
 
 /// Calls [onInit] from initState and [onDispose] from dispose, like a widget

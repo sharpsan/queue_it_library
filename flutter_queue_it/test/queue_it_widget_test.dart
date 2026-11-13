@@ -156,15 +156,64 @@ void main() {
 
   testWidgets('leaves the queue usable after the widget is removed',
       (tester) async {
+    queue.start(stopAutomatically: false);
     await tester.pumpWidget(recorder(queue, builds));
     await tester.pumpWidget(const SizedBox());
 
-    queue
-      ..add('a')
-      ..start();
+    // The queue isn't the widget's to stop.
+    expect(queue.isStarted, isTrue);
+    queue.add('a');
     await tester.pumpAndSettle();
 
     expect(queue.items().completed, hasLength(1));
+  });
+
+  testWidgets(
+      'does not rebuild for a change made while building the frame that '
+      'removes it', (tester) async {
+    await tester.pumpWidget(Column(children: [recorder(queue, builds)]));
+
+    // The new widget adds an item as it's built, in the frame that takes the
+    // QueueItWidget out of the tree.
+    await tester.pumpWidget(Column(children: [
+      _Lifecycle(onInit: () => queue.add('from initState')),
+    ]));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(queue.items(), hasLength(1));
+    expect(builds, [null]);
+  });
+
+  testWidgets(
+      'does not rebuild for a change its child makes from dispose in the '
+      'frame that removes it', (tester) async {
+    final id = queue.add('a');
+    await tester.pumpWidget(QueueItWidget<String>(
+      queue: queue,
+      builder: (context, snapshot) =>
+          _Lifecycle(onDispose: () => queue.cancelById(id)),
+    ));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(queue.items().single.status, QueueItemStatus.canceled);
+  });
+
+  testWidgets(
+      'does not rebuild for a change made in a build outside a frame when it '
+      'is removed before the frame', (tester) async {
+    await tester.pumpWidget(recorder(queue, builds));
+    final element = tester.element(find.byType(QueueItWidget<String>));
+    tester.binding.buildOwner!.buildScope(element, () => queue.add('a'));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(builds, [null]);
   });
 
   testWidgets('rebuilds after the frame for changes made while it builds',
@@ -189,6 +238,7 @@ void main() {
     await tester.pump();
     expect(queue.items(), hasLength(2));
     expect(builds.last!.items, hasLength(2));
+    expect(builds.last!.eventItem!.id, queue.items().last.id);
 
     // And it keeps rebuilding for later changes.
     queue.add('later');
@@ -196,10 +246,28 @@ void main() {
     expect(builds.last!.eventItem!.data, 'later');
   });
 
+  testWidgets('lets its own builder change the queue', (tester) async {
+    final counts = <int>[];
+    // In the app's first build (outside a frame), and in a later frame.
+    await tester.pumpWidget(QueueItWidget<String>(
+      queue: queue,
+      builder: (context, snapshot) {
+        final count = queue.items().length;
+        counts.add(count);
+        if (count < 2) queue.add('item $count');
+        return const SizedBox();
+      },
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(counts.last, 2);
+  });
+
   testWidgets(
       'rebuilds after the frame for changes made in a build outside '
       'a frame', (tester) async {
-    // Flutter builds the app's first widgets that way, in runApp.
+    // A build run by hand. Only debug mode can tell it's one.
     final shown = ValueNotifier(false);
     await tester.pumpWidget(Column(children: [
       recorder(queue, builds),
@@ -221,6 +289,21 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(builds.last!.eventItem!.data, 'from initState');
+  });
+
+  testWidgets('schedules a frame for a change made in a build outside a frame',
+      (tester) async {
+    await tester.pumpWidget(recorder(queue, builds));
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    final element = tester.element(find.byType(QueueItWidget<String>));
+
+    tester.binding.buildOwner!.buildScope(element, () => queue.add('a'));
+
+    // Nothing else asked for a frame, and the rebuild waits for one.
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    await tester.pump();
+    expect(builds.last!.eventItem!.data, 'a');
   });
 
   testWidgets(

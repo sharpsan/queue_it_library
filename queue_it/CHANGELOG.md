@@ -1,3 +1,31 @@
+## 1.0.0
+
+* QueueIt's API is now stable: breaking changes only come with a new major version. New
+  `QueueEvent`s, members and optional parameters may still come in minor versions.
+* BREAKING CHANGE: an item's `status`, `error` and `stackTrace` are now read-only, so only the
+  queue changes them. To cancel or remove an item, use the queue's `cancel` and `remove` methods,
+  and to choose what happens to an item when its handler returns, set `QueueItem.nextStatus`.
+  Items you make yourself, for example in tests, get their status from the constructor, and their
+  `error` and `stackTrace` from `copyWith`.
+* BREAKING CHANGE: removed `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0. Use
+  `items.canceled`, and listen to `QueueIt.onUpdate` for updates.
+* BREAKING CHANGE: `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary`
+  counts canceled items as `Canceled`, matching the spelling everywhere else.
+* BREAKING CHANGE: `retryDelay` and `retryIf` now get the item as their first argument, so each
+  item can have its own delay and its own say on retrying: `retryDelay: (item, retry) => ...`,
+  `retryIf: (item, error) => ...`.
+* Add: `snapshot.willRetry` is true in the `failed` update of an attempt that will be retried, so
+  a listener can tell when an item has failed for good.
+* Add: `queue.itemById(id)` gives you the item with that id, or null.
+* Fix: counting items no longer slows down as the queue grows. For the queue's own items,
+  `length`, `progress`, `summary` and counts like `items.completed.length` no longer go through
+  every item.
+* Fix: `nextStatus` only counts when it's set while the item is processing, usually by its
+  handler. The queue clears it as the item starts processing, so a value set before then no
+  longer decides the attempt's outcome.
+* Fix: a long run of handlers returning a future that calls back right away, such as Flutter's
+  `SynchronousFuture`, no longer overflows the stack and leaves the queue stuck.
+
 ## 0.10.1
 
 * Fix: `waitFor` gives the item as it finished, even when a listener then removes the item or

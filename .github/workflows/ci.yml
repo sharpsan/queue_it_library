@@ -98,3 +98,30 @@ jobs:
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test
+
+  # Dependabot's updates to the workflows' actions go into dev by themselves once both jobs pass.
+  merge-dependabot:
+    name: Merge Dependabot's update
+    needs: [check, minimum]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.base.ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      # Merging a change to a workflow file asks for this too.
+      actions: write
+    steps:
+      # One commit: a short lowercase subject and no body.
+      - name: Squash it into dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          TITLE: ${{ github.event.pull_request.title }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          subject="$(printf '%s' "$TITLE" | sed 's/^Bump /bump /')"
+          gh pr merge "$PR" --squash --delete-branch --match-head-commit "$HEAD" --subject "$subject" --body ""

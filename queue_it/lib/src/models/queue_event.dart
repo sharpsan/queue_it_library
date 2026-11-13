@@ -1,4 +1,8 @@
 /// What happened to a queue, as told by each snapshot on its `onUpdate` stream.
+///
+/// New events may be added in minor versions, so rather than listing every
+/// event in a `switch`, handle the ones you need and use a default case for
+/// the rest.
 enum QueueEvent {
   /// An item was added. The snapshot's `eventItem` is the new item.
   itemAdded,
@@ -20,7 +24,7 @@ enum QueueEvent {
   removedAll,
 
   /// Every pending and processing item was canceled.
-  cancelledAll,
+  canceledAll,
 
   /// The queue has no items left to process, or it was stopped and the items
   /// it was processing have finished.

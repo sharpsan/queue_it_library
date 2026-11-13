@@ -1,6 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The example loads its images from the network. -->
-    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="flutter_queue_it_example"
         android:name="${applicationName}"

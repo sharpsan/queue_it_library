@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:queue_it/queue_it.dart';
 import 'package:test/test.dart';
 
@@ -16,6 +18,33 @@ void main() {
     await queue.running;
 
     expect(processed, List.generate(10, (i) => i));
+  });
+
+  test(
+      'keeps the order when a listener stops the queue as the first item is '
+      'about to start', () async {
+    final processed = <int>[];
+    final queue = QueueIt<int>(itemHandler: (item) => processed.add(item.data));
+    addTearDown(queue.dispose);
+    var stopped = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.startedProcessing && !stopped) {
+        stopped = true;
+        queue.stop();
+      }
+    });
+    queue
+      ..add(1)
+      ..add(2)
+      ..add(3)
+      ..start();
+    await queue.running;
+    expect(processed, isEmpty);
+
+    queue.start();
+    await queue.running;
+
+    expect(processed, [1, 2, 3]);
   });
 
   test('starts items in order when processing several at once', () async {
@@ -78,6 +107,31 @@ void main() {
     gate.release(0);
     await wait();
     expect(gate.started, [0, 1, 2]);
+  });
+
+  test(
+      'carries on with the same run when started again before its handlers '
+      'have returned', () async {
+    final gate = Gate<int>();
+    final queue = QueueIt<int>(itemHandler: gate.call);
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..start();
+    await wait();
+    queue.stop();
+    var stopped = false;
+    final running = queue.running.then((_) => stopped = true);
+
+    queue.start();
+    await wait(10);
+    // The handler of 1 is still running.
+    expect(stopped, isFalse);
+
+    gate.release(1);
+    await running.timeout(const Duration(seconds: 1));
+    expect(queue.isStarted, isFalse);
+    expect(statuses(queue), ['1:completed']);
   });
 
   test('stops by itself once every item is processed', () async {
@@ -228,6 +282,38 @@ void main() {
     expect(queue.items().failed, hasLength(20000));
   });
 
+  test("settles a microtask later when the handler's future calls back at once",
+      () async {
+    final queue = QueueIt<int>(itemHandler: (item) => _SynchronousFuture());
+    addTearDown(queue.dispose);
+    final events = recordEvents(queue);
+    // Whether an item finished, or the next one started, inside `then`.
+    var insideThen = false;
+    queue.onUpdate.listen((snapshot) {
+      if (_SynchronousFuture.calling > 0) insideThen = true;
+    });
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+
+    await queue.running;
+
+    expect(insideThen, isFalse);
+    expect(events, [
+      'itemAdded:1:pending',
+      'itemAdded:2:pending',
+      'startedQueue',
+      'startedProcessing',
+      'itemStatusUpdated:1:processing',
+      'itemStatusUpdated:1:completed',
+      'itemStatusUpdated:2:processing',
+      'itemStatusUpdated:2:completed',
+      'stoppedProcessing',
+      'stoppedQueue',
+    ]);
+  });
+
   test('processes an item added as processing stops', () async {
     final queue = QueueIt<int>(itemHandler: (item) {});
     addTearDown(queue.dispose);
@@ -290,6 +376,14 @@ void main() {
     await queue.running.timeout(const Duration(seconds: 1));
     expect(restarted, isTrue);
     expect(queue.isStarted, isTrue);
+  });
+
+  test('completes running for a queue that was never started', () async {
+    final queue = QueueIt<int>(itemHandler: (item) {});
+    addTearDown(queue.dispose);
+    queue.add(1);
+
+    await queue.running.timeout(const Duration(seconds: 1));
   });
 
   test(
@@ -479,7 +573,7 @@ void main() {
       () async {
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => const Duration(milliseconds: 50),
+      retryDelay: (item, retry) => const Duration(milliseconds: 50),
       itemHandler: (item) => throw Exception('failed'),
     );
     addTearDown(queue.dispose);
@@ -543,4 +637,26 @@ void main() {
     expect(started, isEmpty);
     expect(queue.isProcessing, isFalse);
   });
+}
+
+/// A future that calls back before `then` returns, as Flutter's
+/// SynchronousFuture does.
+class _SynchronousFuture implements Future<void> {
+  /// How many `then` calls are running.
+  static var calling = 0;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(void value) onValue,
+      {Function? onError}) {
+    calling++;
+    try {
+      final result = onValue(null);
+      return result is Future<R> ? result : Future<R>.value(result);
+    } finally {
+      calling--;
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

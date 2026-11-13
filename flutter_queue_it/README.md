@@ -10,23 +10,30 @@ Provides the **`QueueItWidget`** widget that listens to the queue and automatica
 rebuilds on changes, and the **`QueueItListener`** widget that lets you react to every change
 without rebuilding.
 
+![The example app uploading photos three at a time, with retries](https://raw.githubusercontent.com/sharpsan/queue_it_library/main/flutter_queue_it/screenshots/example.webp)
+
 ### Getting started
 
 ```sh
 flutter pub add flutter_queue_it
 ```
 
-flutter_queue_it exports queue_it, so it's the only package you need to add and import. It requires
-Dart 3.5 and Flutter 3.24 or later.
+flutter_queue_it exports queue_it, so you don't need to add or import queue_it as well. It
+requires Dart 3.5 and Flutter 3.24 or later.
 
 ### Example
 
-This app processes "uploads" two at a time and lists them with their status:
+This app processes "uploads" two at a time and lists them with their status. It gets its Material
+widgets from the [material_ui](https://pub.dev/packages/material_ui) package, so add that too:
+
+```sh
+flutter pub add material_ui
+```
 
 ```dart
 // lib/main.dart
-import 'package:flutter/material.dart';
 import 'package:flutter_queue_it/flutter_queue_it.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() => runApp(const MaterialApp(home: UploadsPage()));
 
@@ -102,6 +109,9 @@ class _UploadsPageState extends State<UploadsPage> {
 }
 ```
 
+material_ui needs Flutter 3.47 or later. On older versions, skip it and import
+`package:flutter/material.dart` instead.
+
 ### Rebuilding less often
 
 Use `buildWhen` to only rebuild for the updates you care about:
@@ -157,9 +167,9 @@ widget is being removed, the listener isn't called any more.
   while Flutter is building, for example from a widget's `initState` or `dispose`, rebuild the
   widget right after that frame.
 - `snapshot.event` tells you what happened, and `snapshot.eventItem` is a copy of the item the
-  update is about, taken at that moment. `snapshot.items` holds the queue's own items, so they show
-  each item's current status (and leave out the ones removed since), unless the queue was created
-  with `deepCopyItemsInSnapshot: true`.
+  update is about, taken at that moment. `snapshot.items` holds the current batch's items, the
+  queue's own, so they show each item's current status (and leave out the ones removed since),
+  unless the queue was created with `deepCopyItemsInSnapshot: true`.
 - The widgets never start, stop or dispose of the queue. Keep the queue somewhere that outlives
   rebuilds, like a `State`, and call `dispose()` on it when you're done.
 - Any number of widgets can listen to the same queue, such as a list and a counter in the app bar.
@@ -167,14 +177,28 @@ widget is being removed, the listener isn't called any more.
   `builder` still gets the old queue's last snapshot. Updates from the old queue that were still
   waiting for the end of the frame don't reach `listener`.
 
+### Migrating from 0.10
+
+- queue_it 1.0.0 makes an item's `status`, `error` and `stackTrace` read-only, renames
+  `QueueEvent.cancelledAll` to `canceledAll`, passes the item to `retryDelay` and `retryIf`, and
+  removes the names it deprecated in 0.10.0.
+  Check out the migration notes in its
+  [README](https://pub.dev/packages/queue_it).
+- If you also depend on `queue_it` directly, raise it to `^1.0.0`.
+
 ### Migrating from 0.9
+
+These come on top of the changes from 0.10 above.
 
 - flutter_queue_it now exports queue_it, so you can remove the `package:queue_it/queue_it.dart`
   import (the analyzer reports it as unnecessary) and the `queue_it` dependency. If you keep the
-  dependency, update it to 0.10.0.
+  dependency, give it the same version as flutter_queue_it.
 - queue_it 0.10.0 has a few breaking changes of its own. Check out the migration notes in its
   [README](https://pub.dev/packages/queue_it).
 - flutter_queue_it now requires Dart 3.5 and Flutter 3.24 or later.
 
 For a more in-depth example, check out the
 [example project](https://pub.dev/packages/flutter_queue_it/example).
+
+If flutter_queue_it is useful to you, give it a like on
+[pub.dev](https://pub.dev/packages/flutter_queue_it).

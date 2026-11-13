@@ -6,7 +6,7 @@ Future<void> main() async {
   final queue = QueueIt<String>(
     parallel: 2,
     retries: 3,
-    retryDelay: (retry) => Duration(milliseconds: 200 * retry),
+    retryDelay: (item, retry) => Duration(milliseconds: 200 * retry),
     useFriendlyIds: true,
     itemHandler: (item) async {
       // Fake processing time.

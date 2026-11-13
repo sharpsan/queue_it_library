@@ -1,5 +1,5 @@
 name: queue_it_example
-description: A sample command-line application.
+description: A command-line example of queue_it.
 version: 1.0.0
 publish_to: "none"
 
@@ -9,7 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  queue_it: ^0.10.0
+  queue_it: ^1.0.0
 
 dev_dependencies:
   lints: ^6.1.0

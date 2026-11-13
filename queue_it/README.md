@@ -3,17 +3,18 @@
 [![Pub Version](https://img.shields.io/pub/v/queue_it?label=queue_it)](https://pub.dev/packages/queue_it)
 [![codecov](https://codecov.io/gh/sharpsan/queue_it_library/graph/badge.svg?token=2YLWI5OLQ3)](https://codecov.io/gh/sharpsan/queue_it_library)
 
-QueueIt is designed to simplify the process of managing and processing queues in your Flutter and Dart
-applications.
+QueueIt makes dealing with queues in your Flutter and Dart apps easy, like uploading or downloading
+files a few at a time.
 
 ## Features
 
-- Queue management: Easily add, remove, cancel, and process items in a queue.
+- Queue management: Easily add, cancel and remove items.
 - Event listeners: Listen for updates to the queue and receive snapshots.
 - Concurrency: Control the number of items processed simultaneously.
-- Retries: Automatically retry failed items, with an optional delay between attempts.
-- Item statuses: See where each item is at, when it got there, and why it failed.
-- Waiting: Wait for a single item, or the whole queue, to finish.
+- Retries: Automatically retry failed items.
+- Progress: See each item's status and how much is done.
+- Flutter: Rebuild your widgets when the queue changes, with
+  [flutter_queue_it](https://pub.dev/packages/flutter_queue_it).
 
 ## Getting started
 
@@ -118,6 +119,9 @@ Every item has a `status`:
 - `canceled`: Canceled with `cancel`, `cancelById` or `cancelAll`.
 - `removed`: Removed from the queue with `remove`, `removeById` or `removeAll`.
 
+Only the queue changes an item, so `status`, `error` and `stackTrace` are read-only. To change
+what happens to an item, use the queue's methods, or `nextStatus` from the item handler.
+
 Items also record when they got to each status (`queuedAt`, `startedProcessingAt`, `completedAt`,
 `failedAt`, `canceledAt` and `removedAt`), and any list of items has some helpers:
 
@@ -137,8 +141,8 @@ print(items.summary);
 ### Retries
 
 When the item handler throws, the item is retried up to `retries` times. Retries go ahead of the
-other pending items, in the order they're due. Once there are no retries left the item is `failed`, and `item.error` and `item.stackTrace`
-tell you why.
+other pending items, in the order they're due. Once there are no retries left the item is
+`failed`, and `item.error` and `item.stackTrace` tell you why.
 
 ```dart
 final queue = QueueIt<Uri>(
@@ -146,10 +150,10 @@ final queue = QueueIt<Uri>(
 
   /// Wait 1, 2, then 4 seconds before each retry. Other items keep
   /// processing in the meantime
-  retryDelay: (retry) => Duration(seconds: 1 << (retry - 1)),
+  retryDelay: (item, retry) => Duration(seconds: 1 << (retry - 1)),
 
   /// Only retry errors that might go away
-  retryIf: (error) => error is! FormatException,
+  retryIf: (item, error) => error is! FormatException,
   itemHandler: (item) => download(item.data),
 );
 ```
@@ -170,15 +174,16 @@ queue.cancelById(id);
 queue.removeById(id);
 ```
 
-An item that's already processing can't be interrupted, so its handler keeps running, but QueueIt
-ignores the result and won't retry it. If your handler does a lot of work, it can check
-`item.status` to stop early. `cancel` and `remove` take an item instead of an id, including the
-copies you get in snapshots, and `cancelAll` and `removeAll` work on every item.
+An item that's already processing can't be interrupted, so its handler keeps running, and counts
+towards `parallel` until it returns, but QueueIt ignores the result and won't retry it. If your
+handler does a lot of work, it can check `item.status` to stop early. `cancel` and `remove` take
+an item instead of an id, including the copies you get in snapshots, and `cancelAll` and
+`removeAll` work on every item.
 
 ### Waiting for an item
 
 `waitFor` completes with a copy of the item once it's completed, canceled or removed, or failed
-with no retries left:
+with no retries left. Make sure the queue is started, or the item won't be processed:
 
 ```dart
 final item = await queue.waitFor(queue.add(7));
@@ -205,11 +210,15 @@ queue.onUpdate.listen((snapshot) {
 ```
 
 Every failed attempt sends a `failed` update, including the ones that will be retried.
+`snapshot.willRetry` is true for those, and false once an item has failed for good. New events may
+come in minor versions, so in a `switch` over `snapshot.event`, handle the ones you need and use a
+default case for the rest.
 
 `snapshot.items` holds the items of the current batch. These are the queue's own items, so they keep
 changing after the update. If you need them as they were at the time, create the queue with
 `deepCopyItemsInSnapshot: true`, but copying them costs time on every update, especially for big
-batches.
+batches. Counting the queue's own items is quick however many there are: `length`, `progress`,
+`summary` and counts like `items.completed.length`.
 
 ### Batches
 
@@ -222,17 +231,41 @@ the queue until you remove them.
 
 `add` returns the item's id. It's a UUID, unless you pass your own with `queue.add(data, id: 'my-id')`.
 Ids must be unique within the queue. Set `useFriendlyIds: true` for readable ids like
-`big wizard cat`.
+`big wizard cat`. There are only a few hundred of those, so the id of a removed item can come up
+again. `queue.itemById(id)` gives you the item, or null if the queue doesn't have it.
 
 ### Disposing
 
 Call `dispose()` when you're done with a queue. It stops the queue and closes `onUpdate`. Handlers
-that are still running aren't interrupted, but their results are ignored.
+that are still running aren't interrupted, but their results are ignored, and `waitFor` futures
+that are still waiting fail with a `StateError`.
 
 For a more in-depth look at how to use QueueIt, check out the
 [example project](https://pub.dev/packages/queue_it/example).
 
+## Migrating from 0.10
+
+- An item's `status`, `error` and `stackTrace` are now read-only. To cancel or remove an item,
+  use the queue's `cancel` and `remove` methods, and to choose what happens to an item when its
+  handler returns, set `item.nextStatus` in the handler. To fail an item with an error, throw it
+  from the handler.
+- Items you make yourself, for example in tests, get their status from the constructor, which
+  records when they got there, and their `error` and `stackTrace` from `copyWith`:
+  `QueueItem(data: 'a', batchId: 'b', status: QueueItemStatus.failed).copyWith(error: e)`.
+- `items.cancelled` and `OnUpdateCallback`, deprecated in 0.10.0, are gone. Use `items.canceled`,
+  and listen to `queue.onUpdate` for updates. If you used `OnUpdateCallback` as a type, declare
+  your own:
+  `typedef OnUpdateCallback<T> = void Function(QueueItemStatus status, QueueItem<T> item);`
+- `nextStatus` only counts when it's set while the item is processing, usually by its handler. A
+  value set before then, for example on a pending item, is ignored.
+- `QueueEvent.cancelledAll` is now `QueueEvent.canceledAll`, and `items.summary` says `Canceled`
+  instead of `Cancelled`.
+- `retryDelay` and `retryIf` now get the item first: `retryDelay: (item, retry) => ...` and
+  `retryIf: (item, error) => ...`.
+
 ## Migrating from 0.9
+
+These come on top of the changes from 0.10 above.
 
 - Items that run out of retries are now `failed` instead of `canceled`, and `item.error` and
   `item.stackTrace` hold the last error. If you looked for canceled items to find failures, look
@@ -247,8 +280,10 @@ For a more in-depth look at how to use QueueIt, check out the
 - Canceled and removed items now stay that way, even if they were processing at the time.
 - `onUpdate` listeners can now call the queue. If you delayed those calls to get around the
   `Cannot fire new event` error, you don't need to anymore.
-- `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is deprecated.
+- `items.cancelled` is now `items.canceled`, and the unused `OnUpdateCallback` is gone.
 - QueueIt now requires Dart 3.5 or later.
+
+If QueueIt is useful to you, give it a like on [pub.dev](https://pub.dev/packages/queue_it).
 
 ## License
 

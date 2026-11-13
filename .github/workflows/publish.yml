@@ -16,6 +16,7 @@ jobs:
   check:
     name: Check the release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.tag.outputs.version }}
     steps:
@@ -73,6 +74,7 @@ jobs:
     name: Publish to pub.dev
     needs: check
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: pub.dev
     permissions:
       contents: read
@@ -98,7 +100,8 @@ jobs:
       - name: Publish
         run: |
           on_pub_dev() {
-            curl -sf -o /dev/null "https://pub.dev/api/packages/$1/versions/$VERSION"
+            curl -sf -o /dev/null --retry 3 --max-time 20 \
+              "https://pub.dev/api/packages/$1/versions/$VERSION"
           }
           upload() {
             for attempt in 1 2 3; do
@@ -130,6 +133,7 @@ jobs:
     name: Create the GitHub release
     needs: [check, publish]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     env:

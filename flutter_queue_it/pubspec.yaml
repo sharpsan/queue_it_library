@@ -1,12 +1,16 @@
 name: flutter_queue_it
-description: "Flutter integration for QueueIt. Provides a widget that automatically rebuilds when the queue is updated."
-version: 0.10.1
+description: "Flutter integration for QueueIt. Provides widgets that rebuild, or call you back, when the queue is updated."
+version: 1.0.0
 repository: https://github.com/sharpsan/queue_it_library
 topics:
   - queue
   - widget
   - concurrency
   - async
+  - retry
+screenshots:
+  - description: The example app uploading photos three at a time, with retries.
+    path: screenshots/example.webp
 
 environment:
   sdk: ^3.5.0
@@ -17,7 +21,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  queue_it: ^0.10.1
+  queue_it: ^1.0.0
 
 dev_dependencies:
   flutter_test:

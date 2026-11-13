@@ -84,7 +84,7 @@ void main() {
     final gate = Gate<int>();
     final queue = QueueIt<int>(
       retries: 1,
-      retryDelay: (retry) => const Duration(milliseconds: 20),
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
       itemHandler: (item) {
         processed.add('${item.data}.${item.retryCount}');
         if (item.data == 3) return gate(item);
@@ -141,11 +141,51 @@ void main() {
     expect(processed, ['1.0', '2.0', '1.1', '2.1', '3.0']);
   });
 
+  test(
+      'keeps a retry ahead of the others when a listener stops the queue as '
+      'it is about to start', () async {
+    final attempts = <int>[];
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
+      itemHandler: (item) {
+        attempts.add(item.data);
+        if (item.retryCount == 0) throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start(stopAutomatically: false);
+    await wait(5);
+    expect(attempts, [1, 2]);
+    queue.stop();
+    // Both retries come due while the queue is stopped.
+    await wait(80);
+    var stopped = false;
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.event == QueueEvent.startedProcessing && !stopped) {
+        stopped = true;
+        queue.stop();
+      }
+    });
+    queue.start();
+    await queue.running;
+    expect(attempts, [1, 2]);
+
+    queue.start();
+    await queue.running;
+
+    expect(attempts, [1, 2, 1, 2]);
+    expect(statuses(queue), ['1:completed', '2:completed']);
+  });
+
   test('fails an item without retrying when retryIf says no', () async {
     final errors = <Object>[];
     final queue = QueueIt<int>(
       retries: 3,
-      retryIf: (error) {
+      retryIf: (item, error) {
         errors.add(error);
         return error is! ArgumentError;
       },
@@ -165,13 +205,152 @@ void main() {
     expect(errors, hasLength(4));
   });
 
+  test('willRetry tells a failure that will be retried from the last one',
+      () async {
+    final queue = QueueIt<int>(
+      retries: 2,
+      // Item 2 isn't retried, though it has retries left.
+      retryIf: (item, error) => item.data != 2,
+      itemHandler: (item) {
+        if (item.data != 3 || item.retryCount < 1) throw Exception('failed');
+      },
+    );
+    addTearDown(queue.dispose);
+    final seen = <String>[];
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item != null && snapshot.event == QueueEvent.itemStatusUpdated) {
+        seen.add('${item.data}:${item.status.name}:${item.retryCount}'
+            '${snapshot.willRetry ? ':willRetry' : ''}');
+      } else {
+        expect(snapshot.willRetry, isFalse, reason: snapshot.event.name);
+      }
+    });
+    queue
+      ..add(1)
+      ..add(2)
+      ..add(3)
+      ..start();
+    await queue.running;
+
+    expect(seen, [
+      '1:processing:0',
+      '1:failed:0:willRetry',
+      '1:pending:1',
+      '1:processing:1',
+      '1:failed:1:willRetry',
+      '1:pending:2',
+      '1:processing:2',
+      '1:failed:2',
+      '2:processing:0',
+      '2:failed:0',
+      '3:processing:0',
+      '3:failed:0:willRetry',
+      '3:pending:1',
+      '3:processing:1',
+      '3:completed:1',
+    ]);
+  });
+
+  test('willRetry is true for a retry that waits for its delay', () async {
+    final queue = QueueIt<int>(
+      retries: 1,
+      retryDelay: (item, retry) => const Duration(milliseconds: 20),
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    final failures = <bool>[];
+    queue.onUpdate.listen((snapshot) {
+      if (snapshot.eventItem?.status == QueueItemStatus.failed) {
+        failures.add(snapshot.willRetry);
+      }
+    });
+    queue
+      ..add(1)
+      ..start();
+    await queue.running;
+
+    expect(failures, [true, false]);
+  });
+
+  test('retryIf gets the item that failed', () async {
+    final asked = <String>[];
+    final queue = QueueIt<int>(
+      retries: 1,
+      // Only odd items get another try.
+      retryIf: (item, error) {
+        asked.add('${item.data}:${item.status.name}:${item.retryCount}');
+        return item.data.isOdd;
+      },
+      itemHandler: (item) => throw Exception('failed'),
+    );
+    addTearDown(queue.dispose);
+    queue
+      ..add(1)
+      ..add(2)
+      ..start();
+    await queue.running;
+
+    expect(asked, ['1:processing:0', '2:processing:0']);
+    expect(queue.items().map((item) => item.retryCount), [1, 0]);
+  });
+
+  test(
+      'completes waitFor on the failure that is not retried, with retries left',
+      () async {
+    final failedWith = <int>[];
+    final queue = QueueIt<String>(
+      retries: 2,
+      retryIf: (item, error) => error is! FormatException,
+      itemHandler: (item) => throw item.retryCount == 0
+          ? StateError('busy')
+          : const FormatException('bad file'),
+    );
+    addTearDown(queue.dispose);
+    // To a listener both failures look the same: failed, with retries left.
+    queue.onUpdate.listen((snapshot) {
+      final item = snapshot.eventItem;
+      if (item?.status == QueueItemStatus.failed) {
+        failedWith.add(item!.retryCount);
+      }
+    });
+    final finished = queue.waitFor(queue.add('a'));
+    queue.start();
+
+    final item = await finished;
+
+    expect(item.status, QueueItemStatus.failed);
+    expect(item.error, isFormatException);
+    expect(item.retryCount, 1);
+    expect(failedWith, [0, 1]);
+  });
+
   group('retryDelay', () {
+    test('gets the item and the number of the retry', () async {
+      final asked = <String>[];
+      final queue = QueueIt<int>(
+        retries: 2,
+        retryDelay: (item, retry) {
+          asked.add('${item.data}:${item.retryCount}:$retry');
+          return Duration.zero;
+        },
+        itemHandler: (item) => throw Exception('failed'),
+      );
+      addTearDown(queue.dispose);
+      queue
+        ..add(7)
+        ..start();
+      await queue.running;
+
+      expect(asked, ['7:0:1', '7:1:2']);
+    });
+
     test('waits before each retry', () async {
       final retries = <int>[];
       final attempts = <DateTime>[];
       final queue = QueueIt<int>(
         retries: 2,
-        retryDelay: (retry) {
+        retryDelay: (item, retry) {
           retries.add(retry);
           return Duration(milliseconds: 20 * retry);
         },
@@ -199,7 +378,7 @@ void main() {
       final processed = <String>[];
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(milliseconds: 30),
+        retryDelay: (item, retry) => const Duration(milliseconds: 30),
         itemHandler: (item) {
           processed.add('${item.data}.${item.retryCount}');
           if (item.data == 1 && item.retryCount == 0) {
@@ -228,7 +407,7 @@ void main() {
       var attempts = 0;
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(milliseconds: 20),
+        retryDelay: (item, retry) => const Duration(milliseconds: 20),
         itemHandler: (item) {
           attempts++;
           throw Exception('failed');
@@ -251,7 +430,7 @@ void main() {
       var attempts = 0;
       final queue = QueueIt<int>(
         retries: 1,
-        retryDelay: (retry) => const Duration(hours: 1),
+        retryDelay: (item, retry) => const Duration(hours: 1),
         itemHandler: (item) {
           attempts++;
           throw Exception('failed');
@@ -388,10 +567,10 @@ void main() {
         final queue = QueueIt<int>(
           retries: 1,
           retryIf: callback == 'retryIf'
-              ? (error) => throw StateError(callback)
+              ? (item, error) => throw StateError(callback)
               : null,
           retryDelay: callback == 'retryDelay'
-              ? (retry) => throw StateError(callback)
+              ? (item, retry) => throw StateError(callback)
               : null,
           itemHandler: (item) => throw Exception('failed'),
         );
@@ -416,7 +595,7 @@ void main() {
         () async {
           final queue = QueueIt<int>(
             retries: 1,
-            retryDelay: (retry) => const Duration(hours: 1),
+            retryDelay: (item, retry) => const Duration(hours: 1),
             itemHandler: (item) => throw Exception('failed'),
           );
           queue.onUpdate.listen((snapshot) {
@@ -451,7 +630,7 @@ void main() {
     var attempts = 0;
     QueueIt<int> failing() => QueueIt<int>(
           retries: 1,
-          retryDelay: (retry) => const Duration(milliseconds: 20),
+          retryDelay: (item, retry) => const Duration(milliseconds: 20),
           itemHandler: (item) {
             attempts++;
             throw Exception('failed');
@@ -572,13 +751,13 @@ void main() {
           queue = QueueIt<int>(
             retries: 1,
             retryIf: callback == 'retryIf'
-                ? (error) {
+                ? (item, error) {
                     call();
                     return true;
                   }
                 : null,
             retryDelay: callback == 'retryDelay'
-                ? (retry) {
+                ? (item, retry) {
                     call();
                     return Duration.zero;
                   }
@@ -611,7 +790,7 @@ void main() {
         final delays = <int>[];
         queue = QueueIt<int>(
           retries: 1,
-          retryIf: (error) {
+          retryIf: (item, error) {
             switch (action) {
               case 'cancel':
                 queue.cancelById('a');
@@ -622,7 +801,7 @@ void main() {
             }
             return true;
           },
-          retryDelay: (retry) {
+          retryDelay: (item, retry) {
             delays.add(retry);
             return Duration.zero;
           },
@@ -644,7 +823,7 @@ void main() {
       late QueueIt<int> queue;
       queue = QueueIt<int>(
         retries: 1,
-        retryIf: (error) {
+        retryIf: (item, error) {
           if (queue.items().length == 1) queue.add(2);
           return true;
         },
@@ -685,6 +864,38 @@ void main() {
       await expectLater(before, throwsStateError);
       expect(statuses(queue), ['1:pending']);
       await expectLater(queue.waitFor(id), throwsStateError);
+    });
+
+    test(
+        'retryIf or retryDelay that disposes the queue leaves the item as it is',
+        () async {
+      for (final callback in ['retryIf', 'retryDelay']) {
+        late QueueIt<int> queue;
+        queue = QueueIt<int>(
+          retries: 1,
+          retryIf: callback == 'retryIf'
+              ? (item, error) {
+                  queue.dispose();
+                  return true;
+                }
+              : null,
+          retryDelay: callback == 'retryDelay'
+              ? (item, retry) {
+                  queue.dispose();
+                  return Duration.zero;
+                }
+              : null,
+          itemHandler: (item) => throw Exception('failed'),
+        );
+
+        queue
+          ..add(1)
+          ..start();
+        await wait(5);
+
+        expect(statuses(queue), ['1:processing'], reason: callback);
+        expect(queue.items().single.error, isNull, reason: callback);
+      }
     });
   });
 }
