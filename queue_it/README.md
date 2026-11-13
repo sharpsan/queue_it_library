@@ -209,14 +209,16 @@ queue.onUpdate.listen((snapshot) {
 });
 ```
 
-Every failed attempt sends a `failed` update, including the ones that will be retried. To act once
-an item has failed for good, use `waitFor`. New events may come in minor versions, so in a `switch`
-over `snapshot.event`, handle the ones you need and use a default case for the rest.
+Every failed attempt sends a `failed` update, including the ones that will be retried.
+`snapshot.willRetry` is true for those, and false once an item has failed for good. New events may
+come in minor versions, so in a `switch` over `snapshot.event`, handle the ones you need and use a
+default case for the rest.
 
 `snapshot.items` holds the items of the current batch. These are the queue's own items, so they keep
 changing after the update. If you need them as they were at the time, create the queue with
 `deepCopyItemsInSnapshot: true`, but copying them costs time on every update, especially for big
-batches. So does counting them: `length`, `progress` and `summary` go through the whole batch.
+batches. Counting the queue's own items is quick however many there are: `length`, `progress`,
+`summary` and counts like `items.completed.length`.
 
 ### Batches
 
@@ -230,7 +232,7 @@ the queue until you remove them.
 `add` returns the item's id. It's a UUID, unless you pass your own with `queue.add(data, id: 'my-id')`.
 Ids must be unique within the queue. Set `useFriendlyIds: true` for readable ids like
 `big wizard cat`. There are only a few hundred of those, so the id of a removed item can come up
-again.
+again. `queue.itemById(id)` gives you the item, or null if the queue doesn't have it.
 
 ### Disposing
 

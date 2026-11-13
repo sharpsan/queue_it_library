@@ -14,6 +14,12 @@
 * BREAKING CHANGE: `retryDelay` and `retryIf` now get the item as their first argument, so each
   item can have its own delay and its own say on retrying: `retryDelay: (item, retry) => ...`,
   `retryIf: (item, error) => ...`.
+* Add: `snapshot.willRetry` is true in the `failed` update of an attempt that will be retried, so
+  a listener can tell when an item has failed for good.
+* Add: `queue.itemById(id)` gives you the item with that id, or null.
+* Fix: counting items no longer slows down as the queue grows. For the queue's own items,
+  `length`, `progress`, `summary` and counts like `items.completed.length` no longer go through
+  every item.
 * Fix: `nextStatus` only counts when it's set while the item is processing, usually by its
   handler. The queue clears it as the item starts processing, so a value set before then no
   longer decides the attempt's outcome.
